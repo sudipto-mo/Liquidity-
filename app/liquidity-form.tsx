@@ -601,9 +601,9 @@ export default function LiquidityForm() {
 
     // Calculate RTC metrics after processing all clients
     newSummary.rtcMetrics = {
-      potentialUpstreamToRTC: newSummary.convertibilityTotals["Freely Convertible Currencies"].netPosition,
-      restrictedFunds: newSummary.convertibilityTotals["Restricted Currencies"].netPosition,
-      pendingConversion: newSummary.convertibilityTotals["Partially Convertible"].netPosition
+      potentialUpstreamToRTC: newSummary.convertibilityTotals["Freely Convertible Currencies"].totalCash,
+      restrictedFunds: newSummary.convertibilityTotals["Restricted Currencies"].totalCash,
+      pendingConversion: newSummary.convertibilityTotals["Partially Convertible"].totalCash
     }
 
     // Process each client for pooling simulation
@@ -624,8 +624,9 @@ export default function LiquidityForm() {
 
       // Process each currency
       client.currencies.forEach((currency) => {
-        const netPosition = currency.cashAmount - currency.borrowingAmount;
-        if (netPosition <= 0) return; // Only pool positive balances
+        // Use cashAmount instead of netPosition for pooling (ignore borrowing)
+        const cashAmount = currency.cashAmount;
+        if (cashAmount <= 0) return; // Only pool positive cash balances
 
         const poolingRule = poolingRules[countryConvertibility.category];
         
@@ -634,40 +635,40 @@ export default function LiquidityForm() {
           newSummary.poolingSimulation.links.push({
             source: countryNodeId,
             target: "Restricted",
-            value: Math.max(0.1, netPosition), // Ensure minimum value
+            value: Math.max(0.1, cashAmount), // Ensure minimum value
             currency: currency.currencyCode
           });
           // Update restricted funds metric
-          newSummary.rtcMetrics.restrictedFunds += netPosition;
+          newSummary.rtcMetrics.restrictedFunds += cashAmount;
         } else if (poolingRule.requiresConversion) {
           // Convert to USD (or specified target currency) before pooling
           const targetCurrency = poolingRule.targetCurrency || "USD";
           const conversionRate = fxRates[currency.currencyCode as keyof typeof fxRates]?.[targetCurrency as keyof typeof fxRates[keyof typeof fxRates]] || 1;
-          const convertedValue = netPosition * conversionRate;
+          const convertedValue = cashAmount * conversionRate;
 
           newSummary.poolingSimulation.links.push({
             source: countryNodeId,
             target: "RTC",
-            value: Math.max(0.1, netPosition), // Ensure minimum value
+            value: Math.max(0.1, cashAmount), // Ensure minimum value
             convertedValue: Math.max(0.1, convertedValue), // Ensure minimum value
             currency: currency.currencyCode
           });
 
           // Update pending conversion metric with original amount
-          newSummary.rtcMetrics.pendingConversion += netPosition;
+          newSummary.rtcMetrics.pendingConversion += cashAmount;
           newSummary.poolingSimulation.rtcTotal += convertedValue;
         } else {
           // Direct pooling for freely convertible currencies
           newSummary.poolingSimulation.links.push({
             source: countryNodeId,
             target: "RTC",
-            value: Math.max(0.1, netPosition), // Ensure minimum value
+            value: Math.max(0.1, cashAmount), // Ensure minimum value
             currency: currency.currencyCode
           });
 
           // Update potential upstream metric
-          newSummary.rtcMetrics.potentialUpstreamToRTC += netPosition;
-          newSummary.poolingSimulation.rtcTotal += netPosition;
+          newSummary.rtcMetrics.potentialUpstreamToRTC += cashAmount;
+          newSummary.poolingSimulation.rtcTotal += cashAmount;
         }
       });
     });
@@ -1670,7 +1671,7 @@ export default function LiquidityForm() {
                   <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-lg">Potential Upstream to RTC</CardTitle>
-                      <CardDescription>From freely convertible currencies</CardDescription>
+                      <CardDescription>Cash from freely convertible currencies</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className={`text-2xl font-bold ${summary.rtcMetrics.potentialUpstreamToRTC >= 0 ? "text-green-600" : "text-red-600"}`}>
@@ -1681,7 +1682,7 @@ export default function LiquidityForm() {
 
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Restricted Funds</CardTitle>
+                      <CardTitle className="text-lg">Restricted Cash</CardTitle>
                       <CardDescription>Cannot be moved to RTC</CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -1693,7 +1694,7 @@ export default function LiquidityForm() {
 
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Pending Conversion</CardTitle>
+                      <CardTitle className="text-lg">Cash Pending Conversion</CardTitle>
                       <CardDescription>Requires currency conversion</CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -1718,6 +1719,7 @@ export default function LiquidityForm() {
                         <TableHead>Metric</TableHead>
                         <TableHead>Value</TableHead>
                         <TableHead>Impact</TableHead>
+                        <TableHead>Currency Breakdown</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1729,6 +1731,7 @@ export default function LiquidityForm() {
                             {currencyConvertibility[rtcConfig.location as keyof typeof currencyConvertibility]?.notes}
                           </Badge>
                         </TableCell>
+                        <TableCell>-</TableCell>
                       </TableRow>
                       <TableRow>
                         <TableCell>Centralization Potential</TableCell>
@@ -1738,13 +1741,294 @@ export default function LiquidityForm() {
                         <TableCell>
                           <Badge variant="default">
                             {((summary.rtcMetrics.potentialUpstreamToRTC + summary.rtcMetrics.pendingConversion) /
-                              (Object.values(summary.currencyTotals).reduce((sum, curr) => sum + Math.abs(curr.netPosition), 0)) *
-                              100).toFixed(1)}% of total exposure
+                              (Object.values(summary.currencyTotals).reduce((sum, curr) => sum + curr.totalCash, 0)) *
+                              100).toFixed(1)}% of total cash assets
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm space-y-1 max-h-28 overflow-y-auto">
+                            {/* Freely Convertible Currencies breakdown */}
+                            {Object.entries(
+                              summary.poolingSimulation.links
+                                .filter(link => link.target === "RTC" && !link.convertedValue)
+                                .reduce((acc, link) => {
+                                  acc[link.currency] = (acc[link.currency] || 0) + link.value;
+                                  return acc;
+                                }, {} as Record<string, number>)
+                            ).map(([currency, amount]) => (
+                              <div key={`free-${currency}`} className="font-medium">
+                                <Badge variant="outline" className="mr-1 bg-green-50">FC</Badge>
+                                {formatCurrency(amount)} {currency}
+                              </div>
+                            ))}
+                            
+                            {/* Partially Convertible Currencies breakdown */}
+                            {Object.entries(
+                              summary.poolingSimulation.links
+                                .filter(link => link.target === "RTC" && link.convertedValue)
+                                .reduce((acc, link) => {
+                                  acc[link.currency] = (acc[link.currency] || 0) + link.value;
+                                  return acc;
+                                }, {} as Record<string, number>)
+                            ).map(([currency, amount]) => (
+                              <div key={`partial-${currency}`} className="font-medium">
+                                <Badge variant="outline" className="mr-1 bg-yellow-50">PC</Badge>
+                                {formatCurrency(amount)} {currency}
+                              </div>
+                            ))}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell>Potential Upstream to RTC</TableCell>
+                        <TableCell>
+                          {formatCurrency(summary.rtcMetrics.potentialUpstreamToRTC)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="default">
+                            Freely Convertible
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm space-y-1 max-h-28 overflow-y-auto">
+                            {Object.entries(
+                              summary.poolingSimulation.links
+                                .filter(link => link.target === "RTC" && !link.convertedValue)
+                                .reduce((acc, link) => {
+                                  acc[link.currency] = (acc[link.currency] || 0) + link.value;
+                                  return acc;
+                                }, {} as Record<string, number>)
+                            ).map(([currency, amount]) => (
+                              <div key={`upstream-${currency}`}>
+                                {formatCurrency(amount)} {currency}
+                              </div>
+                            ))}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell>Pending Conversion</TableCell>
+                        <TableCell>
+                          {formatCurrency(summary.rtcMetrics.pendingConversion)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">
+                            Requires FX
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm space-y-1 max-h-28 overflow-y-auto">
+                            {Object.entries(
+                              summary.poolingSimulation.links
+                                .filter(link => link.target === "RTC" && link.convertedValue)
+                                .reduce((acc, link) => {
+                                  acc[link.currency] = (acc[link.currency] || 0) + link.value;
+                                  return acc;
+                                }, {} as Record<string, number>)
+                            ).map(([currency, amount]) => (
+                              <div key={`convert-${currency}`}>
+                                {formatCurrency(amount)} {currency}
+                              </div>
+                            ))}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell>Restricted Funds</TableCell>
+                        <TableCell>
+                          {formatCurrency(summary.rtcMetrics.restrictedFunds)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="destructive">
+                            Cannot Pool
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm space-y-1 max-h-28 overflow-y-auto">
+                            {Object.entries(
+                              summary.poolingSimulation.links
+                                .filter(link => link.target === "Restricted")
+                                .reduce((acc, link) => {
+                                  acc[link.currency] = (acc[link.currency] || 0) + link.value;
+                                  return acc;
+                                }, {} as Record<string, number>)
+                            ).map(([currency, amount]) => (
+                              <div key={`restricted-${currency}`}>
+                                {formatCurrency(amount)} {currency}
+                              </div>
+                            ))}
+                          </div>
                         </TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
+
+                  <h3 className="text-lg font-medium mt-8 mb-4">Cash balance eligible to participate in the cash pool</h3>
+                  <div className="overflow-x-auto">
+                    <Table className="border-collapse">
+                      <TableHeader>
+                        <TableRow className="bg-secondary">
+                          <TableHead className="border">Currency</TableHead>
+                          {/* Get unique currencies from poolable funds (freely convertible and partially convertible) */}
+                          {Array.from(new Set([
+                            ...Object.keys(
+                              summary.poolingSimulation.links
+                                .filter(link => link.target === "RTC")
+                                .reduce((acc, link) => {
+                                  acc[link.currency] = true;
+                                  return acc;
+                                }, {} as Record<string, boolean>)
+                            )
+                          ].sort())).map(currency => (
+                            <TableHead key={currency} className="border text-center">{currency}</TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {/* Freely Convertible Currencies row */}
+                        <TableRow>
+                          <TableCell className="border font-medium">
+                            <div className="flex items-center">
+                              <Badge variant="outline" className="mr-2 bg-green-50">FC</Badge>
+                              Freely Convertible
+                            </div>
+                          </TableCell>
+                          {Array.from(new Set([
+                            ...Object.keys(
+                              summary.poolingSimulation.links
+                                .filter(link => link.target === "RTC")
+                                .reduce((acc, link) => {
+                                  acc[link.currency] = true;
+                                  return acc;
+                                }, {} as Record<string, boolean>)
+                            )
+                          ].sort())).map(currencyCode => {
+                            // Find amount for this currency from freely convertible sources
+                            const amount = summary.poolingSimulation.links
+                              .filter(link => link.target === "RTC" && !link.convertedValue && link.currency === currencyCode)
+                              .reduce((sum, link) => sum + link.value, 0);
+                            
+                            return (
+                              <TableCell key={`fc-${currencyCode}`} className={`border text-right ${amount > 0 ? 'bg-green-50' : ''}`}>
+                                {amount > 0 ? formatCurrency(amount) : '-'}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                        
+                        {/* Partially Convertible Currencies row */}
+                        <TableRow>
+                          <TableCell className="border font-medium">
+                            <div className="flex items-center">
+                              <Badge variant="outline" className="mr-2 bg-yellow-50">PC</Badge>
+                              Partially Convertible
+                            </div>
+                          </TableCell>
+                          {Array.from(new Set([
+                            ...Object.keys(
+                              summary.poolingSimulation.links
+                                .filter(link => link.target === "RTC")
+                                .reduce((acc, link) => {
+                                  acc[link.currency] = true;
+                                  return acc;
+                                }, {} as Record<string, boolean>)
+                            )
+                          ].sort())).map(currencyCode => {
+                            // Find amount for this currency from partially convertible sources
+                            const amount = summary.poolingSimulation.links
+                              .filter(link => link.target === "RTC" && link.convertedValue && link.currency === currencyCode)
+                              .reduce((sum, link) => sum + link.value, 0);
+                            
+                            return (
+                              <TableCell key={`pc-${currencyCode}`} className={`border text-right ${amount > 0 ? 'bg-yellow-50' : ''}`}>
+                                {amount > 0 ? formatCurrency(amount) : '-'}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                        
+                        {/* Total row */}
+                        <TableRow className="bg-gray-50 font-bold">
+                          <TableCell className="border">Total</TableCell>
+                          {Array.from(new Set([
+                            ...Object.keys(
+                              summary.poolingSimulation.links
+                                .filter(link => link.target === "RTC")
+                                .reduce((acc, link) => {
+                                  acc[link.currency] = true;
+                                  return acc;
+                                }, {} as Record<string, boolean>)
+                            )
+                          ].sort())).map(currencyCode => {
+                            // Calculate total for this currency
+                            const total = summary.poolingSimulation.links
+                              .filter(link => link.target === "RTC" && link.currency === currencyCode)
+                              .reduce((sum, link) => sum + link.value, 0);
+                            
+                            return (
+                              <TableCell key={`total-${currencyCode}`} className="border text-right">
+                                {formatCurrency(total)}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  <h3 className="text-lg font-medium mt-8 mb-4">Restricted funds by currency</h3>
+                  <div className="overflow-x-auto">
+                    <Table className="border-collapse">
+                      <TableHeader>
+                        <TableRow className="bg-secondary">
+                          <TableHead className="border">Currency</TableHead>
+                          {Array.from(new Set([
+                            ...Object.keys(
+                              summary.poolingSimulation.links
+                                .filter(link => link.target === "Restricted")
+                                .reduce((acc, link) => {
+                                  acc[link.currency] = true;
+                                  return acc;
+                                }, {} as Record<string, boolean>)
+                            )
+                          ].sort())).map(currency => (
+                            <TableHead key={currency} className="border text-center">{currency}</TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell className="border font-medium">
+                            <div className="flex items-center">
+                              <Badge variant="destructive" className="mr-2">RC</Badge>
+                              Restricted Currencies
+                            </div>
+                          </TableCell>
+                          {Array.from(new Set([
+                            ...Object.keys(
+                              summary.poolingSimulation.links
+                                .filter(link => link.target === "Restricted")
+                                .reduce((acc, link) => {
+                                  acc[link.currency] = true;
+                                  return acc;
+                                }, {} as Record<string, boolean>)
+                            )
+                          ].sort())).map(currencyCode => {
+                            // Find amount for this restricted currency
+                            const amount = summary.poolingSimulation.links
+                              .filter(link => link.target === "Restricted" && link.currency === currencyCode)
+                              .reduce((sum, link) => sum + link.value, 0);
+                            
+                            return (
+                              <TableCell key={`rc-${currencyCode}`} className="border text-right bg-red-50">
+                                {formatCurrency(amount)}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>
