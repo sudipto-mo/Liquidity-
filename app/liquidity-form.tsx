@@ -27,6 +27,10 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Label } from "@/components/ui/label"
 import { ResponsiveSankey } from '@nivo/sankey'
 
+import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
+import { initialData } from "@/data/initial-data"
+import { getClientStore, saveToClientStore, deleteFromClientStore, type SavedClient } from "@/lib/client-store"
+
 // Define the schema for a currency entry
 const currencyEntrySchema = z.object({
   currencyCode: z.string().min(1, { message: "Currency is required" }),
@@ -37,7 +41,7 @@ const currencyEntrySchema = z.object({
   borrowingTenor: z.enum(["Short Term", "Long Term"]),
 })
 
-// Define the schema for a single client entry
+// Define the schema for a client entry
 const clientEntrySchema = z.object({
   clientName: z.string().min(1, { message: "Client name is required" }),
   operatingCountry: z.string().min(1, { message: "Operating country is required" }),
@@ -46,12 +50,11 @@ const clientEntrySchema = z.object({
 
 // Define the schema for the entire form
 const formSchema = z.object({
-  entries: z.array(clientEntrySchema).min(1, { message: "At least one client entry is required" }),
+  entries: z.array(clientEntrySchema).min(1, { message: "At least one client is required" }),
 })
 
 type CurrencyEntry = z.infer<typeof currencyEntrySchema>
 type ClientEntry = z.infer<typeof clientEntrySchema>
-type FormValues = z.infer<typeof formSchema>
 
 // Summary types
 type CurrencySummary = {
@@ -403,10 +406,17 @@ const formatCurrency = (amount: number) => {
   }).format(amount)
 }
 
+// Export the FormValues type for use in storage.ts
+export type FormValues = z.infer<typeof formSchema>
+
 export default function LiquidityForm() {
   const [selectedCurrencies, setSelectedCurrencies] = useState<{ [key: number]: string[] }>({})
   const [currencySelectionOpen, setCurrencySelectionOpen] = useState<{ [key: number]: boolean }>({})
   const [currencySearchTerm, setCurrencySearchTerm] = useState("")
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+  const [loadDialogOpen, setLoadDialogOpen] = useState(false)
+  const [clientName, setClientName] = useState("")
+  const [savedClients, setSavedClients] = useState<SavedClient[]>([])
   const [summary, setSummary] = useState<GlobalSummary>({
     clients: [],
     currencyTotals: {},
@@ -430,6 +440,18 @@ export default function LiquidityForm() {
   const [rtcConfig, setRTCConfig] = useState<RTCConfig>({
     location: "Singapore"
   });
+  const [filters, setFilters] = useState({
+    clientName: "",
+    country: "_all",
+    category: "_all",
+    currency: "_all"
+  });
+
+  // Load saved clients on mount
+  useEffect(() => {
+    const store = getClientStore()
+    setSavedClients(store.clients)
+  }, [])
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -445,7 +467,7 @@ export default function LiquidityForm() {
               cashInterestRate: 0,
               borrowingAmount: 0,
               borrowingInterestRate: 0,
-              borrowingTenor: "Short Term",
+              borrowingTenor: "Short Term" as const,
             },
           ],
         },
@@ -768,6 +790,9 @@ export default function LiquidityForm() {
   )
 
   function onSubmit(data: FormValues) {
+    // Save to localStorage when form is submitted
+    saveToLocalStorage(data)
+    
     toast({
       title: "Liquidity data submitted",
       description: (
@@ -777,7 +802,100 @@ export default function LiquidityForm() {
       ),
     })
     console.log(data)
-    // We don't need to set showSummary since the summary is always visible
+  }
+
+  const handleSaveClient = () => {
+    if (!clientName.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a client name",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const success = saveToClientStore(clientName, form.getValues())
+    if (success) {
+      const store = getClientStore()
+      setSavedClients(store.clients)
+      setSaveDialogOpen(false)
+      setClientName("")
+      toast({
+        title: "Success",
+        description: "Client configuration saved successfully",
+      })
+    } else {
+      toast({
+        title: "Error",
+        description: "Failed to save client configuration",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleLoadClient = (savedClient: SavedClient) => {
+    form.reset(savedClient.data)
+    setLoadDialogOpen(false)
+    toast({
+      title: "Success",
+      description: `Loaded configuration for ${savedClient.name}`,
+    })
+  }
+
+  const handleDeleteClient = (clientName: string) => {
+    const success = deleteFromClientStore(clientName)
+    if (success) {
+      const store = getClientStore()
+      setSavedClients(store.clients)
+      toast({
+        title: "Success",
+        description: "Client configuration deleted successfully",
+      })
+    } else {
+      toast({
+        title: "Error",
+        description: "Failed to delete client configuration",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Add a reset button to clear localStorage
+  const handleReset = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('liquidity_data')
+      form.reset({
+        entries: [
+          {
+            clientName: "",
+            operatingCountry: "",
+            currencies: [
+              {
+                currencyCode: "",
+                cashAmount: 0,
+                cashInterestRate: 0,
+                borrowingAmount: 0,
+                borrowingInterestRate: 0,
+                borrowingTenor: "Short Term",
+              },
+            ],
+          },
+        ],
+      })
+      toast({
+        title: "Form reset",
+        description: "All data has been cleared",
+      })
+    }
+  }
+
+  // Add a load sample data button
+  const handleLoadSample = () => {
+    form.reset(initialData)
+    toast({
+      title: "Sample data loaded",
+      description: "Initial sample data has been loaded into the form",
+    })
   }
 
   // Add Pooling Visualization Component
@@ -942,6 +1060,65 @@ export default function LiquidityForm() {
     );
   };
 
+  // Filter the data based on current filters
+  const getFilteredData = () => {
+    return summary.clients.map(client => ({
+      ...client,
+      countries: client.countries
+        .filter(country => {
+          const countryInfo = currencyConvertibility[country.country as keyof typeof currencyConvertibility];
+          const matchesCountry = filters.country === "_all" || country.country === filters.country;
+          const matchesCategory = filters.category === "_all" || (countryInfo?.category === filters.category);
+          
+          return matchesCountry && matchesCategory;
+        })
+        .map(country => ({
+          ...country,
+          currencies: country.currencies.filter(currency => 
+            (filters.currency === "_all" || currency.currencyCode === filters.currency)
+          )
+        }))
+    }))
+    .filter(client => {
+      const matchesClient = !filters.clientName || client.clientName.toLowerCase().includes(filters.clientName.toLowerCase());
+      const hasMatchingData = client.countries.some(country => country.currencies.length > 0);
+      return matchesClient && hasMatchingData;
+    });
+  };
+
+  // Calculate totals for filtered data
+  const calculateFilteredTotals = (filteredData: typeof summary.clients) => {
+    const totals = {
+      totalCash: 0,
+      totalBorrowing: 0,
+      totalCashInterest: 0,
+      totalBorrowingInterest: 0,
+      netPosition: 0
+    };
+
+    filteredData.forEach(client => {
+      client.countries.forEach(country => {
+        country.currencies.forEach(currency => {
+          const currencyTotals = summary.currencyTotals[currency.currencyCode];
+          totals.totalCash += currency.totalCash;
+          totals.totalBorrowing += currency.totalBorrowing;
+          totals.totalCashInterest += currency.totalCash * (currencyTotals?.cashInterestRate || 0) / 100;
+          totals.totalBorrowingInterest += currency.totalBorrowing * (currencyTotals?.borrowingInterestRate || 0) / 100;
+          totals.netPosition += currency.netPosition;
+        });
+      });
+    });
+
+    return totals;
+  };
+
+  const clearFilters = () => setFilters({
+    clientName: "",
+    country: "_all",
+    category: "_all",
+    currency: "_all"
+  });
+
   return (
     <div className="container mx-auto py-10">
       <Card className="w-full mb-8">
@@ -978,11 +1155,105 @@ export default function LiquidityForm() {
 
       <Card className="w-full mb-8">
         <CardHeader>
-          <CardTitle>Client Liquidity Form</CardTitle>
-          <CardDescription>
-            Enter cash and borrowing amounts by client, operating country, and currency.
-          </CardDescription>
+          <div className="flex justify-between items-center">
+            <div>
+              <CardTitle>Liquidity Management Form</CardTitle>
+              <CardDescription>Enter your client liquidity information below.</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handleReset}>
+                Reset Form
+              </Button>
+              <Button variant="outline" onClick={handleLoadSample}>
+                Load Sample Data
+              </Button>
+              <Button variant="outline" onClick={() => setSaveDialogOpen(true)}>
+                Save Configuration
+              </Button>
+              <Button variant="outline" onClick={() => setLoadDialogOpen(true)}>
+                Load Configuration
+              </Button>
+            </div>
+          </div>
         </CardHeader>
+
+        {/* Save Dialog */}
+        {saveDialogOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg w-96">
+              <h3 className="text-lg font-medium mb-4">Save Configuration</h3>
+              <Input
+                placeholder="Enter configuration name"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                className="mb-4"
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveClient}>
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Load Dialog */}
+        {loadDialogOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg w-[600px]">
+              <h3 className="text-lg font-medium mb-4">Load Configuration</h3>
+              {savedClients.length === 0 ? (
+                <p className="text-center text-gray-500 mb-4">No saved configurations found</p>
+              ) : (
+                <div className="max-h-[400px] overflow-y-auto mb-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Saved Date</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {savedClients.map((client) => (
+                        <TableRow key={client.name}>
+                          <TableCell>{client.name}</TableCell>
+                          <TableCell>{new Date(client.savedAt).toLocaleString()}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleLoadClient(client)}
+                              className="mr-2"
+                            >
+                              Load
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteClient(client.name)}
+                            >
+                              Delete
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => setLoadDialogOpen(false)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <CardContent className="space-y-6">
@@ -1332,198 +1603,154 @@ export default function LiquidityForm() {
 
               {/* Overall Summary Tab */}
               <TabsContent value="overall" className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Total Assets</CardTitle>
-                      <CardDescription>Aggregated cash positions</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">
-                        {formatCurrency(
-                          Object.values(summary.currencyTotals).reduce((sum, curr) => sum + curr.totalCash, 0),
-                        )}
-                      </div>
-                      <div className="text-sm text-green-600 mt-2">
-                        Interest Earned: {formatCurrency(
-                          Object.values(summary.currencyTotals).reduce(
-                            (sum, curr) => sum + (curr.totalCash * curr.cashInterestRate / 100), 
-                            0
-                          ),
-                        )}/yr
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Total Liabilities</CardTitle>
-                      <CardDescription>Aggregated borrowing positions</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">
-                        {formatCurrency(
-                          Object.values(summary.currencyTotals).reduce((sum, curr) => sum + curr.totalBorrowing, 0),
-                        )}
-                      </div>
-                      <div className="text-sm text-red-600 mt-2">
-                        Interest Expense: {formatCurrency(
-                          Object.values(summary.currencyTotals).reduce(
-                            (sum, curr) => sum + (curr.totalBorrowing * curr.borrowingInterestRate / 100),
-                            0
-                          ),
-                        )}/yr
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Net Liquidity</CardTitle>
-                      <CardDescription>Overall liquidity position</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      {(() => {
-                        const netPosition = Object.values(summary.currencyTotals).reduce(
-                          (sum, curr) => sum + curr.netPosition,
-                          0,
-                        )
-                        const netInterest = Object.values(summary.currencyTotals).reduce(
-                          (sum, curr) => 
-                            sum + 
-                            (curr.totalCash * curr.cashInterestRate / 100) - 
-                            (curr.totalBorrowing * curr.borrowingInterestRate / 100),
-                          0,
-                        )
-                        return (
-                          <>
-                            <div className={`text-2xl font-bold ${netPosition >= 0 ? "text-green-600" : "text-red-600"}`}>
-                              {formatCurrency(netPosition)}
-                            </div>
-                            <div className={`text-sm mt-2 ${netInterest >= 0 ? "text-green-600" : "text-red-600"}`}>
-                              Net Interest: {formatCurrency(netInterest)}/yr
-                            </div>
-                          </>
-                        )
-                      })()}
-                    </CardContent>
-                  </Card>
-                </div>
-
                 <div>
-                  <h3 className="text-lg font-medium mb-4">Currency Breakdown</h3>
+                  <div className="flex items-center gap-4 mb-4">
+                    <Input 
+                      placeholder="Filter by client name..."
+                      value={filters.clientName}
+                      onChange={(e) => setFilters(prev => ({ ...prev, clientName: e.target.value }))}
+                      className="max-w-xs"
+                    />
+                    <Select 
+                      value={filters.country}
+                      onValueChange={(value) => setFilters(prev => ({ ...prev, country: value }))}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Filter by country" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_all">All Countries</SelectItem>
+                        {Array.from(new Set(summary.clients.flatMap(client => 
+                          client.countries.map(country => country.country)
+                        ))).sort().map(country => (
+                          <SelectItem key={country} value={country}>{country}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select 
+                      value={filters.category}
+                      onValueChange={(value) => setFilters(prev => ({ ...prev, category: value }))}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Filter by category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_all">All Categories</SelectItem>
+                        <SelectItem value="Restricted Currencies">Restricted</SelectItem>
+                        <SelectItem value="Partially Convertible">Partially Convertible</SelectItem>
+                        <SelectItem value="Freely Convertible Currencies">Freely Convertible</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select 
+                      value={filters.currency}
+                      onValueChange={(value) => setFilters(prev => ({ ...prev, currency: value }))}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Filter by currency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_all">All Currencies</SelectItem>
+                        {Object.keys(summary.currencyTotals).sort().map(currency => (
+                          <SelectItem key={currency} value={currency}>{currency}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {(filters.clientName || filters.country || filters.category || filters.currency) && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={clearFilters}
+                      >
+                        Clear Filters
+                      </Button>
+                    )}
+                  </div>
+
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Client</TableHead>
+                        <TableHead>Country</TableHead>
+                        <TableHead>Category</TableHead>
                         <TableHead>Currency</TableHead>
-                        <TableHead className="text-right">Total Cash</TableHead>
+                        <TableHead className="text-right">Cash</TableHead>
                         <TableHead className="text-right">Cash Rate</TableHead>
                         <TableHead className="text-right">Interest Earned</TableHead>
-                        <TableHead className="text-right">Total Borrowing</TableHead>
+                        <TableHead className="text-right">Borrowing</TableHead>
                         <TableHead className="text-right">Borrowing Rate</TableHead>
                         <TableHead className="text-right">Interest Expense</TableHead>
-                        <TableHead className="text-right">Tenor</TableHead>
                         <TableHead className="text-right">Net Position</TableHead>
-                        <TableHead className="text-right">Net Interest</TableHead>
-                        <TableHead className="text-right">% of Total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {Object.entries(summary.currencyTotals)
-                        .sort(([, a], [, b]) => Math.abs(b.netPosition) - Math.abs(a.netPosition))
-                        .map(([currencyCode, totals], index) => {
-                          const totalNetPosition = Object.values(summary.currencyTotals).reduce(
-                            (sum, curr) => sum + Math.abs(curr.netPosition),
-                            0,
-                          )
-                          const percentage =
-                            totalNetPosition === 0 ? 0 : (Math.abs(totals.netPosition) / totalNetPosition) * 100
-                          
-                          const interestEarned = totals.totalCash * totals.cashInterestRate / 100
-                          const interestExpense = totals.totalBorrowing * totals.borrowingInterestRate / 100
-                          const netInterest = interestEarned - interestExpense
-
-                          return (
-                            <TableRow key={index}>
-                              <TableCell className="font-medium">{currencyCode}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(totals.totalCash)}</TableCell>
-                              <TableCell className="text-right">{totals.cashInterestRate.toFixed(2)}%</TableCell>
-                              <TableCell className="text-right text-green-600">{formatCurrency(interestEarned)}/yr</TableCell>
-                              <TableCell className="text-right">{formatCurrency(totals.totalBorrowing)}</TableCell>
-                              <TableCell className="text-right">{totals.borrowingInterestRate.toFixed(2)}%</TableCell>
-                              <TableCell className="text-right text-red-600">{formatCurrency(interestExpense)}/yr</TableCell>
-                              <TableCell className="text-right">{totals.borrowingTenor}</TableCell>
-                              <TableCell
-                                className={`text-right ${totals.netPosition >= 0 ? "text-green-600" : "text-red-600"}`}
+                      {getFilteredData().map((client) => (
+                        client.countries.map((country) => (
+                          country.currencies.map((currency, idx) => {
+                            const countryInfo = currencyConvertibility[country.country as keyof typeof currencyConvertibility];
+                            const categoryBadge = countryInfo ? (
+                              <Badge
+                                variant={
+                                  countryInfo.category === "Restricted Currencies"
+                                    ? "destructive"
+                                    : countryInfo.category === "Partially Convertible"
+                                    ? "secondary"
+                                    : "default"
+                                }
+                                className="ml-2"
                               >
-                                {formatCurrency(totals.netPosition)}
-                              </TableCell>
-                              <TableCell
-                                className={`text-right ${netInterest >= 0 ? "text-green-600" : "text-red-600"}`}
-                              >
-                                {formatCurrency(netInterest)}/yr
-                              </TableCell>
-                              <TableCell className="text-right">{percentage.toFixed(1)}%</TableCell>
-                            </TableRow>
-                          )
-                        })}
-                    </TableBody>
-                  </Table>
-                </div>
+                                {countryInfo.category === "Restricted Currencies" ? "RC" :
+                                 countryInfo.category === "Partially Convertible" ? "PC" : "FC"}
+                              </Badge>
+                            ) : null;
 
-                {/* Add Convertibility Breakdown after Currency Breakdown */}
-                <div className="mt-8">
-                  <h3 className="text-lg font-medium mb-4">Convertibility Breakdown</h3>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Countries</TableHead>
-                        <TableHead className="text-right">Total Cash</TableHead>
-                        <TableHead className="text-right">Total Borrowing</TableHead>
-                        <TableHead className="text-right">Net Position</TableHead>
-                        <TableHead className="text-right">% of Total</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(Object.entries(summary.convertibilityTotals) as [ConvertibilityCategory, typeof summary.convertibilityTotals[ConvertibilityCategory]][]).map(([category, totals]) => {
-                        const totalNetPosition = Object.values(summary.convertibilityTotals).reduce(
-                          (sum, curr) => sum + Math.abs(curr.netPosition),
-                          0
-                        );
-                        const percentage = totalNetPosition === 0 ? 0 : (Math.abs(totals.netPosition) / totalNetPosition) * 100;
+                            const totals = summary.currencyTotals[currency.currencyCode];
+                            const interestEarned = currency.totalCash * (totals?.cashInterestRate || 0) / 100;
+                            const interestExpense = currency.totalBorrowing * (totals?.borrowingInterestRate || 0) / 100;
 
+                            return (
+                              <TableRow key={`${client.clientName}-${country.country}-${currency.currencyCode}-${idx}`}>
+                                <TableCell>{client.clientName}</TableCell>
+                                <TableCell>{country.country}</TableCell>
+                                <TableCell>{categoryBadge}</TableCell>
+                                <TableCell>{currency.currencyCode}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(currency.totalCash)}</TableCell>
+                                <TableCell className="text-right">{totals?.cashInterestRate.toFixed(2)}%</TableCell>
+                                <TableCell className="text-right text-green-600">{formatCurrency(interestEarned)}/yr</TableCell>
+                                <TableCell className="text-right">{formatCurrency(currency.totalBorrowing)}</TableCell>
+                                <TableCell className="text-right">{totals?.borrowingInterestRate.toFixed(2)}%</TableCell>
+                                <TableCell className="text-right text-red-600">{formatCurrency(interestExpense)}/yr</TableCell>
+                                <TableCell className={`text-right ${currency.netPosition >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                  {formatCurrency(currency.netPosition)}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        ))
+                      ))}
+                      {/* Grand Total Row */}
+                      {(() => {
+                        const filteredTotals = calculateFilteredTotals(getFilteredData());
                         return (
-                          <TableRow key={category}>
-                            <TableCell className="font-medium">
-                              <div>
-                                {category}
-                                <Badge
-                                  variant={
-                                    category === "Restricted Currencies"
-                                      ? "destructive"
-                                      : category === "Partially Convertible"
-                                      ? "secondary"
-                                      : "default"
-                                  }
-                                  className="ml-2"
-                                >
-                                  {totals.countries.length} countries
-                                </Badge>
-                              </div>
+                          <TableRow className="bg-muted font-bold">
+                            <TableCell colSpan={3}>Grand Total</TableCell>
+                            <TableCell>{filters.currency || "All Currencies"}</TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(filteredTotals.totalCash)}
                             </TableCell>
-                            <TableCell>{totals.countries.join(", ")}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(totals.totalCash)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(totals.totalBorrowing)}</TableCell>
-                            <TableCell
-                              className={`text-right ${totals.netPosition >= 0 ? "text-green-600" : "text-red-600"}`}
-                            >
-                              {formatCurrency(totals.netPosition)}
+                            <TableCell className="text-right">-</TableCell>
+                            <TableCell className="text-right text-green-600">
+                              {formatCurrency(filteredTotals.totalCashInterest)}/yr
                             </TableCell>
-                            <TableCell className="text-right">{percentage.toFixed(1)}%</TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(filteredTotals.totalBorrowing)}
+                            </TableCell>
+                            <TableCell className="text-right">-</TableCell>
+                            <TableCell className="text-right text-red-600">
+                              {formatCurrency(filteredTotals.totalBorrowingInterest)}/yr
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(filteredTotals.netPosition)}
+                            </TableCell>
                           </TableRow>
                         );
-                      })}
+                      })()}
                     </TableBody>
                   </Table>
                 </div>
@@ -1575,305 +1802,22 @@ export default function LiquidityForm() {
                       })}
                     </TableBody>
                   </Table>
-
-                  <h3 className="text-lg font-medium mt-8 mb-4">Detailed Client Breakdown</h3>
-                  <Accordion type="single" collapsible className="w-full">
-                    {summary.clients.map((client, clientIndex) => {
-                      // Calculate client totals
-                      const clientTotals = {
-                        assets: 0,
-                        liabilities: 0,
-                        netPosition: 0,
-                      }
-
-                      client.countries.forEach((country) => {
-                        country.currencies.forEach((currency) => {
-                          clientTotals.assets += currency.totalCash
-                          clientTotals.liabilities += currency.totalBorrowing
-                          clientTotals.netPosition += currency.netPosition
-                        })
-                      })
-
-                      return (
-                        <AccordionItem key={clientIndex} value={`client-${clientIndex}`}>
-                          <AccordionTrigger className="hover:bg-gray-50 px-4">
-                            <div className="flex justify-between w-full pr-4">
-                              <span>{client.clientName}</span>
-                              <span className={clientTotals.netPosition >= 0 ? "text-green-600" : "text-red-600"}>
-                                {formatCurrency(clientTotals.netPosition)}
-                              </span>
-                            </div>
-                          </AccordionTrigger>
-                          <AccordionContent className="px-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                              <div className="p-4 bg-gray-50 rounded-lg">
-                                <div className="text-sm text-gray-500">Total Assets</div>
-                                <div className="text-xl font-semibold">{formatCurrency(clientTotals.assets)}</div>
-                              </div>
-                              <div className="p-4 bg-gray-50 rounded-lg">
-                                <div className="text-sm text-gray-500">Total Liabilities</div>
-                                <div className="text-xl font-semibold">{formatCurrency(clientTotals.liabilities)}</div>
-                              </div>
-                              <div className="p-4 bg-gray-50 rounded-lg">
-                                <div className="text-sm text-gray-500">Net Position</div>
-                                <div
-                                  className={`text-xl font-semibold ${clientTotals.netPosition >= 0 ? "text-green-600" : "text-red-600"}`}
-                                >
-                                  {formatCurrency(clientTotals.netPosition)}
-                                </div>
-                              </div>
-                            </div>
-
-                            {client.countries.map((country, countryIndex) => (
-                              <div key={countryIndex} className="mb-6">
-                                <h4 className="font-medium mb-2">Operating Country: {country.country}</h4>
-                                <Table>
-                                  <TableHeader>
-                                    <TableRow>
-                                      <TableHead>Currency</TableHead>
-                                      <TableHead className="text-right">Cash Amount</TableHead>
-                                      <TableHead className="text-right">Borrowing Amount</TableHead>
-                                      <TableHead className="text-right">Net Position</TableHead>
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    {country.currencies.map((currency, currencyIndex) => (
-                                      <TableRow key={currencyIndex}>
-                                        <TableCell className="font-medium">{currency.currencyCode}</TableCell>
-                                        <TableCell className="text-right">
-                                          {formatCurrency(currency.totalCash)}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                          {formatCurrency(currency.totalBorrowing)}
-                                        </TableCell>
-                                        <TableCell
-                                          className={`text-right ${currency.netPosition >= 0 ? "text-green-600" : "text-red-600"}`}
-                                        >
-                                          {formatCurrency(currency.netPosition)}
-                                        </TableCell>
-                                      </TableRow>
-                                    ))}
-                                  </TableBody>
-                                </Table>
-                              </div>
-                            ))}
-                          </AccordionContent>
-                        </AccordionItem>
-                      )
-                    })}
-                  </Accordion>
                 </div>
               </TabsContent>
 
               {/* RTC View Tab */}
               <TabsContent value="rtc" className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Potential Upstream to RTC</CardTitle>
-                      <CardDescription>Cash from freely convertible currencies</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className={`text-2xl font-bold ${summary.rtcMetrics.potentialUpstreamToRTC >= 0 ? "text-green-600" : "text-red-600"}`}>
-                        {formatCurrency(summary.rtcMetrics.potentialUpstreamToRTC)}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Restricted Cash</CardTitle>
-                      <CardDescription>Cannot be moved to RTC</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-red-600">
-                        {formatCurrency(summary.rtcMetrics.restrictedFunds)}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Cash Pending Conversion</CardTitle>
-                      <CardDescription>Requires currency conversion</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-yellow-600">
-                        {formatCurrency(summary.rtcMetrics.pendingConversion)}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
                 <div>
-                  <h3 className="text-lg font-medium mb-4">Treasury Pooling Simulation</h3>
-                  <PoolingSummary data={summary.poolingSimulation} />
-                  <PoolingVisualization data={summary.poolingSimulation} />
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-medium mb-4">RTC Impact Analysis</h3>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Metric</TableHead>
-                        <TableHead>Value</TableHead>
-                        <TableHead>Impact</TableHead>
-                        <TableHead>Currency Breakdown</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      <TableRow>
-                        <TableCell>RTC Location</TableCell>
-                        <TableCell>{rtcConfig.location}</TableCell>
-                        <TableCell>
-                          <Badge variant="default">
-                            {currencyConvertibility[rtcConfig.location as keyof typeof currencyConvertibility]?.notes}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>-</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell>Centralization Potential</TableCell>
-                        <TableCell>
-                          {formatCurrency(summary.rtcMetrics.potentialUpstreamToRTC + summary.rtcMetrics.pendingConversion)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="default">
-                            {((summary.rtcMetrics.potentialUpstreamToRTC + summary.rtcMetrics.pendingConversion) /
-                              (Object.values(summary.currencyTotals).reduce((sum, curr) => sum + curr.totalCash, 0)) *
-                              100).toFixed(1)}% of total cash assets
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm space-y-1 max-h-28 overflow-y-auto">
-                            {/* Freely Convertible Currencies breakdown */}
-                            {Object.entries(
-                              summary.poolingSimulation.links
-                                .filter(link => link.target === "RTC" && !link.convertedValue)
-                                .reduce((acc, link) => {
-                                  acc[link.currency] = (acc[link.currency] || 0) + link.value;
-                                  return acc;
-                                }, {} as Record<string, number>)
-                            ).map(([currency, amount]) => (
-                              <div key={`free-${currency}`} className="font-medium">
-                                <Badge variant="outline" className="mr-1 bg-green-50">FC</Badge>
-                                {formatCurrency(amount)} {currency}
-                              </div>
-                            ))}
-                            
-                            {/* Partially Convertible Currencies breakdown */}
-                            {Object.entries(
-                              summary.poolingSimulation.links
-                                .filter(link => link.target === "RTC" && link.convertedValue)
-                                .reduce((acc, link) => {
-                                  acc[link.currency] = (acc[link.currency] || 0) + link.value;
-                                  return acc;
-                                }, {} as Record<string, number>)
-                            ).map(([currency, amount]) => (
-                              <div key={`partial-${currency}`} className="font-medium">
-                                <Badge variant="outline" className="mr-1 bg-yellow-50">PC</Badge>
-                                {formatCurrency(amount)} {currency}
-                              </div>
-                            ))}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell>Potential Upstream to RTC</TableCell>
-                        <TableCell>
-                          {formatCurrency(summary.rtcMetrics.potentialUpstreamToRTC)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="default">
-                            Freely Convertible
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm space-y-1 max-h-28 overflow-y-auto">
-                            {Object.entries(
-                              summary.poolingSimulation.links
-                                .filter(link => link.target === "RTC" && !link.convertedValue)
-                                .reduce((acc, link) => {
-                                  acc[link.currency] = (acc[link.currency] || 0) + link.value;
-                                  return acc;
-                                }, {} as Record<string, number>)
-                            ).map(([currency, amount]) => (
-                              <div key={`upstream-${currency}`}>
-                                {formatCurrency(amount)} {currency}
-                              </div>
-                            ))}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell>Pending Conversion</TableCell>
-                        <TableCell>
-                          {formatCurrency(summary.rtcMetrics.pendingConversion)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">
-                            Requires FX
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm space-y-1 max-h-28 overflow-y-auto">
-                            {Object.entries(
-                              summary.poolingSimulation.links
-                                .filter(link => link.target === "RTC" && link.convertedValue)
-                                .reduce((acc, link) => {
-                                  acc[link.currency] = (acc[link.currency] || 0) + link.value;
-                                  return acc;
-                                }, {} as Record<string, number>)
-                            ).map(([currency, amount]) => (
-                              <div key={`convert-${currency}`}>
-                                {formatCurrency(amount)} {currency}
-                              </div>
-                            ))}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell>Restricted Funds</TableCell>
-                        <TableCell>
-                          {formatCurrency(summary.rtcMetrics.restrictedFunds)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="destructive">
-                            Cannot Pool
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm space-y-1 max-h-28 overflow-y-auto">
-                            {Object.entries(
-                              summary.poolingSimulation.links
-                                .filter(link => link.target === "Restricted")
-                                .reduce((acc, link) => {
-                                  acc[link.currency] = (acc[link.currency] || 0) + link.value;
-                                  return acc;
-                                }, {} as Record<string, number>)
-                            ).map(([currency, amount]) => (
-                              <div key={`restricted-${currency}`}>
-                                {formatCurrency(amount)} {currency}
-                              </div>
-                            ))}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-
-                  <h3 className="text-lg font-medium mt-8 mb-4">Cash balance eligible to participate in the cash pool</h3>
+                  <h3 className="text-lg font-medium mb-4">Cash Pool Analysis</h3>
                   <div className="overflow-x-auto">
                     <Table className="border-collapse">
                       <TableHeader>
                         <TableRow className="bg-secondary">
-                          <TableHead className="border">Currency</TableHead>
-                          {/* Get unique currencies from poolable funds (freely convertible and partially convertible) */}
+                          <TableHead className="border">Category</TableHead>
+                          {/* Get unique currencies from all funds (poolable and restricted) */}
                           {Array.from(new Set([
                             ...Object.keys(
                               summary.poolingSimulation.links
-                                .filter(link => link.target === "RTC")
                                 .reduce((acc, link) => {
                                   acc[link.currency] = true;
                                   return acc;
@@ -1896,7 +1840,6 @@ export default function LiquidityForm() {
                           {Array.from(new Set([
                             ...Object.keys(
                               summary.poolingSimulation.links
-                                .filter(link => link.target === "RTC")
                                 .reduce((acc, link) => {
                                   acc[link.currency] = true;
                                   return acc;
@@ -1927,7 +1870,6 @@ export default function LiquidityForm() {
                           {Array.from(new Set([
                             ...Object.keys(
                               summary.poolingSimulation.links
-                                .filter(link => link.target === "RTC")
                                 .reduce((acc, link) => {
                                   acc[link.currency] = true;
                                   return acc;
@@ -1946,57 +1888,8 @@ export default function LiquidityForm() {
                             );
                           })}
                         </TableRow>
-                        
-                        {/* Total row */}
-                        <TableRow className="bg-gray-50 font-bold">
-                          <TableCell className="border">Total</TableCell>
-                          {Array.from(new Set([
-                            ...Object.keys(
-                              summary.poolingSimulation.links
-                                .filter(link => link.target === "RTC")
-                                .reduce((acc, link) => {
-                                  acc[link.currency] = true;
-                                  return acc;
-                                }, {} as Record<string, boolean>)
-                            )
-                          ].sort())).map(currencyCode => {
-                            // Calculate total for this currency
-                            const total = summary.poolingSimulation.links
-                              .filter(link => link.target === "RTC" && link.currency === currencyCode)
-                              .reduce((sum, link) => sum + link.value, 0);
-                            
-                            return (
-                              <TableCell key={`total-${currencyCode}`} className="border text-right">
-                                {formatCurrency(total)}
-                              </TableCell>
-                            );
-                          })}
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </div>
 
-                  <h3 className="text-lg font-medium mt-8 mb-4">Restricted funds by currency</h3>
-                  <div className="overflow-x-auto">
-                    <Table className="border-collapse">
-                      <TableHeader>
-                        <TableRow className="bg-secondary">
-                          <TableHead className="border">Currency</TableHead>
-                          {Array.from(new Set([
-                            ...Object.keys(
-                              summary.poolingSimulation.links
-                                .filter(link => link.target === "Restricted")
-                                .reduce((acc, link) => {
-                                  acc[link.currency] = true;
-                                  return acc;
-                                }, {} as Record<string, boolean>)
-                            )
-                          ].sort())).map(currency => (
-                            <TableHead key={currency} className="border text-center">{currency}</TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
+                        {/* Restricted Currencies row */}
                         <TableRow>
                           <TableCell className="border font-medium">
                             <div className="flex items-center">
@@ -2007,7 +1900,6 @@ export default function LiquidityForm() {
                           {Array.from(new Set([
                             ...Object.keys(
                               summary.poolingSimulation.links
-                                .filter(link => link.target === "Restricted")
                                 .reduce((acc, link) => {
                                   acc[link.currency] = true;
                                   return acc;
@@ -2022,6 +1914,31 @@ export default function LiquidityForm() {
                             return (
                               <TableCell key={`rc-${currencyCode}`} className="border text-right bg-red-50">
                                 {formatCurrency(amount)}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                        
+                        {/* Total row */}
+                        <TableRow className="bg-gray-50 font-bold">
+                          <TableCell className="border">Total</TableCell>
+                          {Array.from(new Set([
+                            ...Object.keys(
+                              summary.poolingSimulation.links
+                                .reduce((acc, link) => {
+                                  acc[link.currency] = true;
+                                  return acc;
+                                }, {} as Record<string, boolean>)
+                            )
+                          ].sort())).map(currencyCode => {
+                            // Calculate total for this currency
+                            const total = summary.poolingSimulation.links
+                              .filter(link => link.currency === currencyCode)
+                              .reduce((sum, link) => sum + link.value, 0);
+                            
+                            return (
+                              <TableCell key={`total-${currencyCode}`} className="border text-right">
+                                {formatCurrency(total)}
                               </TableCell>
                             );
                           })}
