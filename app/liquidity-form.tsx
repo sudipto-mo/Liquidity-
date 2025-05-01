@@ -26,6 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Label } from "@/components/ui/label"
 import { ResponsiveSankey } from '@nivo/sankey'
+import { Slider } from "@/components/ui/slider"
 
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { initialData } from "@/data/initial-data"
@@ -1762,45 +1763,51 @@ export default function LiquidityForm() {
               {/* RTC View content */}
               <div className="mt-8">
                   <h3 className="text-lg font-medium mb-4">Cash Pool Analysis</h3>
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center gap-8 mb-4">
+                  <div className="flex flex-col gap-2 min-w-[220px]">
                     <Label htmlFor="fxHaircut">FX Haircut (%)</Label>
-                    <Input
-                      id="fxHaircut"
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      className="w-24"
-                      value={fxHaircut}
-                      onChange={(e) => setFxHaircut(Number(e.target.value))}
-                    />
+                    <div className="flex items-center gap-4">
+                      <Slider
+                        id="fxHaircut"
+                        min={0}
+                        max={100}
+                        step={0.1}
+                        value={[fxHaircut]}
+                        onValueChange={([val]) => setFxHaircut(val)}
+                        className="w-40"
+                      />
+                      <span className="w-12 text-right">{fxHaircut.toFixed(1)}%</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-2 min-w-[220px]">
                     <Label htmlFor="blendedCreditRate">Blended Credit Rate (%)</Label>
-                    <Input
-                      id="blendedCreditRate"
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      className="w-24"
-                      value={blendedCreditRate}
-                      onChange={(e) => setBlendedCreditRate(Number(e.target.value))}
-                    />
+                    <div className="flex items-center gap-4">
+                      <Slider
+                        id="blendedCreditRate"
+                        min={0}
+                        max={20}
+                        step={0.01}
+                        value={[blendedCreditRate]}
+                        onValueChange={([val]) => setBlendedCreditRate(val)}
+                        className="w-40"
+                      />
+                      <span className="w-12 text-right">{blendedCreditRate.toFixed(2)}%</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-2 min-w-[220px]">
                     <Label htmlFor="usdDebitRate">USD Debit Rate (%)</Label>
-                    <Input
-                      id="usdDebitRate"
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      className="w-24"
-                      value={usdDebitRate}
-                      onChange={(e) => setUsdDebitRate(Number(e.target.value))}
-                    />
+                    <div className="flex items-center gap-4">
+                      <Slider
+                        id="usdDebitRate"
+                        min={0}
+                        max={20}
+                        step={0.01}
+                        value={[usdDebitRate]}
+                        onValueChange={([val]) => setUsdDebitRate(val)}
+                        className="w-40"
+                      />
+                      <span className="w-12 text-right">{usdDebitRate.toFixed(2)}%</span>
+                    </div>
                   </div>
                 </div>
                   <div className="overflow-x-auto">
