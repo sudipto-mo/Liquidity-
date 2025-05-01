@@ -1136,8 +1136,10 @@ export default function LiquidityForm() {
     currency: "_all"
   });
 
-  // Excel Export/Import Handlers
-  const exportToExcel = () => {
+  // Excel Export/Import Handlers (dynamic import)
+  const exportToExcel = async () => {
+    if (typeof window === "undefined") return;
+    const XLSX = await import("xlsx");
     // Flatten entries for Excel
     const rows = form.getValues().entries.flatMap(entry =>
       entry.currencies.map(currency => ({
@@ -1157,7 +1159,9 @@ export default function LiquidityForm() {
     XLSX.writeFile(wb, "ClientBalanceEntry.xlsx");
   };
 
-  const handleExcelUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExcelUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (typeof window === "undefined") return;
+    const XLSX = await import("xlsx");
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -1249,7 +1253,7 @@ export default function LiquidityForm() {
           </div>
           <div className="flex gap-2 mt-4">
             <Button variant="secondary" onClick={exportToExcel}>Export to Excel</Button>
-            <Input type="file" accept=".xlsx, .xls" onChange={handleExcelUpload} className="w-auto" />
+            <Input type="file" accept=".xlsx, .xls" onChange={e => handleExcelUpload(e)} className="w-auto" />
           </div>
         </CardHeader>
         <CardContent>
