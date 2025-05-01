@@ -1726,7 +1726,7 @@ export default function LiquidityForm() {
                             <TableCell className="text-right">
                               {currency.totalBorrowing > 0 ? `${borrowingRate.toFixed(2)}%` : "-"}
                             </TableCell>
-                            <TableCell className="text-right text-red-600">{formatCurrency(interestExpense)}</TableCell>
+                            <TableCell className="text-right text-red-600">{formatCurrency(borrowingRate > 0 ? -1 * interestExpense : interestExpense)}</TableCell>
                             <TableCell className={`text-right ${netInterest >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {formatCurrency(netInterest)}
                                 </TableCell>
@@ -1755,7 +1755,7 @@ export default function LiquidityForm() {
                             </TableCell>
                             <TableCell className="text-right">-</TableCell>
                             <TableCell className="text-right text-red-600">
-                          {formatCurrency(filteredTotals.totalBorrowingInterest)}
+                          {formatCurrency(filteredTotals.totalBorrowingInterest > 0 ? -1 * filteredTotals.totalBorrowingInterest : filteredTotals.totalBorrowingInterest)}
                             </TableCell>
                         <TableCell className={`text-right ${netInterest >= 0 ? "text-green-600" : "text-red-600"}`}>
                           {formatCurrency(netInterest)}
@@ -1946,7 +1946,7 @@ export default function LiquidityForm() {
                       <CardContent>
                         <div className="text-2xl font-bold text-red-600">
                           {formatCurrency(
-                            summary.clients.reduce((total, client) => 
+                            -1 * summary.clients.reduce((total, client) => 
                               total + client.countries.reduce((countryTotal, country) =>
                                 countryTotal + country.currencies.reduce((currencyTotal, currency) => {
                                   const currencyInfo = summary.currencyTotals[currency.currencyCode];
@@ -1997,7 +1997,7 @@ export default function LiquidityForm() {
 
                           return (
                             <div className="text-2xl font-bold text-red-600">
-                              {formatCurrency(totalExpense)}/yr
+                              {formatCurrency(-1 * totalExpense)}/yr
                             </div>
                           );
                         })()}
