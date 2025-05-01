@@ -31,6 +31,7 @@ import { Slider } from "@/components/ui/slider"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { initialData } from "@/data/initial-data"
 import { getClientStore, saveToClientStore, deleteFromClientStore, type SavedClient } from "@/lib/client-store"
+import * as XLSX from "xlsx";
 
 // Define the schema for a currency entry
 const currencyEntrySchema = z.object({
@@ -1135,6 +1136,61 @@ export default function LiquidityForm() {
     currency: "_all"
   });
 
+  // Excel Export/Import Handlers
+  const exportToExcel = () => {
+    // Flatten entries for Excel
+    const rows = form.getValues().entries.flatMap(entry =>
+      entry.currencies.map(currency => ({
+        clientName: entry.clientName,
+        operatingCountry: entry.operatingCountry,
+        currencyCode: currency.currencyCode,
+        cashAmount: currency.cashAmount,
+        cashInterestRate: currency.cashInterestRate,
+        borrowingAmount: currency.borrowingAmount,
+        borrowingInterestRate: currency.borrowingInterestRate,
+        borrowingTenor: currency.borrowingTenor,
+      }))
+    );
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "ClientBalance");
+    XLSX.writeFile(wb, "ClientBalanceEntry.xlsx");
+  };
+
+  const handleExcelUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = new Uint8Array(e.target?.result as ArrayBuffer);
+      const workbook = XLSX.read(data, { type: "array" });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(worksheet) as any[];
+      // Group by clientName + operatingCountry
+      const grouped: Record<string, any> = {};
+      json.forEach(row => {
+        const key = `${row.clientName}||${row.operatingCountry}`;
+        if (!grouped[key]) {
+          grouped[key] = {
+            clientName: row.clientName,
+            operatingCountry: row.operatingCountry,
+            currencies: []
+          };
+        }
+        grouped[key].currencies.push({
+          currencyCode: row.currencyCode,
+          cashAmount: row.cashAmount,
+          cashInterestRate: row.cashInterestRate,
+          borrowingAmount: row.borrowingAmount,
+          borrowingInterestRate: row.borrowingInterestRate,
+          borrowingTenor: row.borrowingTenor,
+        });
+      });
+      form.reset({ entries: Object.values(grouped) });
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
   return (
     <div className="container mx-auto py-10">
       <Card className="w-full mb-8">
@@ -1190,6 +1246,10 @@ export default function LiquidityForm() {
                 Load Configuration
               </Button>
             </div>
+          </div>
+          <div className="flex gap-2 mt-4">
+            <Button variant="secondary" onClick={exportToExcel}>Export to Excel</Button>
+            <Input type="file" accept=".xlsx, .xls" onChange={handleExcelUpload} className="w-auto" />
           </div>
         </CardHeader>
         <CardContent>
