@@ -446,6 +446,9 @@ export default function LiquidityForm() {
     category: "_all",
     currency: "_all"
   });
+  const [fxHaircut, setFxHaircut] = useState(0);
+  const [blendedCreditRate, setBlendedCreditRate] = useState(2.5);
+  const [usdDebitRate, setUsdDebitRate] = useState(5.0); // Changed default to 5%
 
   // Load saved clients on mount
   useEffect(() => {
@@ -585,18 +588,23 @@ export default function LiquidityForm() {
             totalCash: 0,
             totalBorrowing: 0,
             netPosition: 0,
-            cashInterestRate: 0,
-            borrowingInterestRate: 0,
-            borrowingTenor: "Short Term",
+            cashInterestRate: cashInterestRate,
+            borrowingInterestRate: borrowingInterestRate,
+            borrowingTenor: borrowingTenor,
+          }
+        } else {
+          // Update rates only if they are higher than existing ones
+          if (cashInterestRate > newSummary.currencyTotals[currency.currencyCode].cashInterestRate) {
+            newSummary.currencyTotals[currency.currencyCode].cashInterestRate = cashInterestRate;
+          }
+          if (borrowingInterestRate > newSummary.currencyTotals[currency.currencyCode].borrowingInterestRate) {
+            newSummary.currencyTotals[currency.currencyCode].borrowingInterestRate = borrowingInterestRate;
           }
         }
 
-        newSummary.currencyTotals[currency.currencyCode].totalCash += cashAmount
-        newSummary.currencyTotals[currency.currencyCode].totalBorrowing += borrowingAmount
-        newSummary.currencyTotals[currency.currencyCode].netPosition += cashAmount - borrowingAmount
-        newSummary.currencyTotals[currency.currencyCode].cashInterestRate = cashInterestRate
-        newSummary.currencyTotals[currency.currencyCode].borrowingInterestRate = borrowingInterestRate
-        newSummary.currencyTotals[currency.currencyCode].borrowingTenor = borrowingTenor
+        newSummary.currencyTotals[currency.currencyCode].totalCash += cashAmount;
+        newSummary.currencyTotals[currency.currencyCode].totalBorrowing += borrowingAmount;
+        newSummary.currencyTotals[currency.currencyCode].netPosition += cashAmount - borrowingAmount;
       })
 
       clientSummary.countries.push(countrySummary)
@@ -1594,15 +1602,6 @@ export default function LiquidityForm() {
               No data available. Please add client information and submit the form.
             </div>
           ) : (
-            <Tabs defaultValue="overall" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 mb-6">
-                <TabsTrigger value="overall">Overall Summary</TabsTrigger>
-                <TabsTrigger value="clients">Client-wise Breakdown</TabsTrigger>
-                <TabsTrigger value="rtc">RTC View</TabsTrigger>
-              </TabsList>
-
-              {/* Overall Summary Tab */}
-              <TabsContent value="overall" className="space-y-6">
                 <div>
                   <div className="flex items-center gap-4 mb-4">
                     <Input 
@@ -1676,13 +1675,13 @@ export default function LiquidityForm() {
                         <TableHead className="text-right">Borrowing</TableHead>
                         <TableHead className="text-right">Borrowing Rate</TableHead>
                         <TableHead className="text-right">Interest Expense</TableHead>
-                        <TableHead className="text-right">Net Position</TableHead>
+                    <TableHead className="text-right">Net Interest Earned/(Expense)</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {getFilteredData().map((client) => (
+                  {getFilteredData().map((client, clientIndex) => (
                         client.countries.map((country) => (
-                          country.currencies.map((currency, idx) => {
+                      country.currencies.map((currency, currencyIndex) => {
                             const countryInfo = currencyConvertibility[country.country as keyof typeof currencyConvertibility];
                             const categoryBadge = countryInfo ? (
                               <Badge
@@ -1701,23 +1700,28 @@ export default function LiquidityForm() {
                             ) : null;
 
                             const totals = summary.currencyTotals[currency.currencyCode];
-                            const interestEarned = currency.totalCash * (totals?.cashInterestRate || 0) / 100;
-                            const interestExpense = currency.totalBorrowing * (totals?.borrowingInterestRate || 0) / 100;
+                        const cashRate = totals?.cashInterestRate || 0;
+                        const borrowingRate = totals?.borrowingInterestRate || 0;
+                        const interestEarned = currency.totalCash * cashRate / 100;
+                        const interestExpense = currency.totalBorrowing * borrowingRate / 100;
+                        const netInterest = interestEarned - interestExpense;
 
                             return (
-                              <TableRow key={`${client.clientName}-${country.country}-${currency.currencyCode}-${idx}`}>
+                          <TableRow key={`${client.clientName}-${country.country}-${currency.currencyCode}-${currencyIndex}`}>
                                 <TableCell>{client.clientName}</TableCell>
                                 <TableCell>{country.country}</TableCell>
                                 <TableCell>{categoryBadge}</TableCell>
                                 <TableCell>{currency.currencyCode}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(currency.totalCash)}</TableCell>
-                                <TableCell className="text-right">{totals?.cashInterestRate.toFixed(2)}%</TableCell>
-                                <TableCell className="text-right text-green-600">{formatCurrency(interestEarned)}/yr</TableCell>
+                            <TableCell className="text-right">{cashRate.toFixed(2)}%</TableCell>
+                            <TableCell className="text-right text-green-600">{formatCurrency(interestEarned)}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(currency.totalBorrowing)}</TableCell>
-                                <TableCell className="text-right">{totals?.borrowingInterestRate.toFixed(2)}%</TableCell>
-                                <TableCell className="text-right text-red-600">{formatCurrency(interestExpense)}/yr</TableCell>
-                                <TableCell className={`text-right ${currency.netPosition >= 0 ? "text-green-600" : "text-red-600"}`}>
-                                  {formatCurrency(currency.netPosition)}
+                            <TableCell className="text-right">
+                              {currency.totalBorrowing > 0 ? `${borrowingRate.toFixed(2)}%` : "-"}
+                            </TableCell>
+                            <TableCell className="text-right text-red-600">{formatCurrency(interestExpense)}</TableCell>
+                            <TableCell className={`text-right ${netInterest >= 0 ? "text-green-600" : "text-red-600"}`}>
+                              {formatCurrency(netInterest)}
                                 </TableCell>
                               </TableRow>
                             );
@@ -1727,6 +1731,7 @@ export default function LiquidityForm() {
                       {/* Grand Total Row */}
                       {(() => {
                         const filteredTotals = calculateFilteredTotals(getFilteredData());
+                    const netInterest = filteredTotals.totalCashInterest - filteredTotals.totalBorrowingInterest;
                         return (
                           <TableRow className="bg-muted font-bold">
                             <TableCell colSpan={3}>Grand Total</TableCell>
@@ -1736,95 +1741,83 @@ export default function LiquidityForm() {
                             </TableCell>
                             <TableCell className="text-right">-</TableCell>
                             <TableCell className="text-right text-green-600">
-                              {formatCurrency(filteredTotals.totalCashInterest)}/yr
+                          {formatCurrency(filteredTotals.totalCashInterest)}
                             </TableCell>
                             <TableCell className="text-right">
                               {formatCurrency(filteredTotals.totalBorrowing)}
                             </TableCell>
                             <TableCell className="text-right">-</TableCell>
                             <TableCell className="text-right text-red-600">
-                              {formatCurrency(filteredTotals.totalBorrowingInterest)}/yr
+                          {formatCurrency(filteredTotals.totalBorrowingInterest)}
                             </TableCell>
-                            <TableCell className="text-right">
-                              {formatCurrency(filteredTotals.netPosition)}
+                        <TableCell className={`text-right ${netInterest >= 0 ? "text-green-600" : "text-red-600"}`}>
+                          {formatCurrency(netInterest)}
                             </TableCell>
                           </TableRow>
                         );
                       })()}
                     </TableBody>
                   </Table>
-                </div>
-              </TabsContent>
 
-              {/* Client-wise Breakdown Tab */}
-              <TabsContent value="clients">
-                <div className="space-y-6">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Client</TableHead>
-                        <TableHead>Operating Country</TableHead>
-                        <TableHead className="text-right">Total Assets</TableHead>
-                        <TableHead className="text-right">Total Liabilities</TableHead>
-                        <TableHead className="text-right">Net Position</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {summary.clients.map((client, index) => {
-                        // Calculate totals for this client
-                        const clientTotals = {
-                          assets: 0,
-                          liabilities: 0,
-                          netPosition: 0,
-                        }
-
-                        client.countries.forEach((country) => {
-                          country.currencies.forEach((currency) => {
-                            clientTotals.assets += currency.totalCash
-                            clientTotals.liabilities += currency.totalBorrowing
-                            clientTotals.netPosition += currency.netPosition
-                          })
-                        })
-
-                        return (
-                          <TableRow key={index}>
-                            <TableCell className="font-medium">{client.clientName}</TableCell>
-                            <TableCell>{client.countries.map((country) => country.country).join(", ")}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(clientTotals.assets)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(clientTotals.liabilities)}</TableCell>
-                            <TableCell
-                              className={`text-right ${clientTotals.netPosition >= 0 ? "text-green-600" : "text-red-600"}`}
-                            >
-                              {formatCurrency(clientTotals.netPosition)}
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              </TabsContent>
-
-              {/* RTC View Tab */}
-              <TabsContent value="rtc" className="space-y-6">
-                <div>
+              {/* RTC View content */}
+              <div className="mt-8">
                   <h3 className="text-lg font-medium mb-4">Cash Pool Analysis</h3>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="fxHaircut">FX Haircut (%)</Label>
+                    <Input
+                      id="fxHaircut"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      className="w-24"
+                      value={fxHaircut}
+                      onChange={(e) => setFxHaircut(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="blendedCreditRate">Blended Credit Rate (%)</Label>
+                    <Input
+                      id="blendedCreditRate"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      className="w-24"
+                      value={blendedCreditRate}
+                      onChange={(e) => setBlendedCreditRate(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="usdDebitRate">USD Debit Rate (%)</Label>
+                    <Input
+                      id="usdDebitRate"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      className="w-24"
+                      value={usdDebitRate}
+                      onChange={(e) => setUsdDebitRate(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
                   <div className="overflow-x-auto">
                     <Table className="border-collapse">
                       <TableHeader>
                         <TableRow className="bg-secondary">
                           <TableHead className="border">Category</TableHead>
-                          {/* Get unique currencies from all funds (poolable and restricted) */}
-                          {Array.from(new Set([
-                            ...Object.keys(
+                        {Array.from(new Set(
+                          Object.keys(
                               summary.poolingSimulation.links
                                 .reduce((acc, link) => {
                                   acc[link.currency] = true;
                                   return acc;
                                 }, {} as Record<string, boolean>)
                             )
-                          ].sort())).map(currency => (
-                            <TableHead key={currency} className="border text-center">{currency}</TableHead>
+                        )).sort().map((currencyCode: string) => (
+                          <TableHead key={currencyCode} className="border text-center">{currencyCode}</TableHead>
                           ))}
                         </TableRow>
                       </TableHeader>
@@ -1837,16 +1830,15 @@ export default function LiquidityForm() {
                               Freely Convertible
                             </div>
                           </TableCell>
-                          {Array.from(new Set([
-                            ...Object.keys(
+                        {Array.from(new Set(
+                          Object.keys(
                               summary.poolingSimulation.links
                                 .reduce((acc, link) => {
                                   acc[link.currency] = true;
                                   return acc;
                                 }, {} as Record<string, boolean>)
                             )
-                          ].sort())).map(currencyCode => {
-                            // Find amount for this currency from freely convertible sources
+                        )).sort().map((currencyCode: string) => {
                             const amount = summary.poolingSimulation.links
                               .filter(link => link.target === "RTC" && !link.convertedValue && link.currency === currencyCode)
                               .reduce((sum, link) => sum + link.value, 0);
@@ -1867,16 +1859,15 @@ export default function LiquidityForm() {
                               Partially Convertible
                             </div>
                           </TableCell>
-                          {Array.from(new Set([
-                            ...Object.keys(
+                        {Array.from(new Set(
+                          Object.keys(
                               summary.poolingSimulation.links
                                 .reduce((acc, link) => {
                                   acc[link.currency] = true;
                                   return acc;
                                 }, {} as Record<string, boolean>)
                             )
-                          ].sort())).map(currencyCode => {
-                            // Find amount for this currency from partially convertible sources
+                        )).sort().map((currencyCode: string) => {
                             const amount = summary.poolingSimulation.links
                               .filter(link => link.target === "RTC" && link.convertedValue && link.currency === currencyCode)
                               .reduce((sum, link) => sum + link.value, 0);
@@ -1889,66 +1880,173 @@ export default function LiquidityForm() {
                           })}
                         </TableRow>
 
-                        {/* Restricted Currencies row */}
-                        <TableRow>
-                          <TableCell className="border font-medium">
-                            <div className="flex items-center">
-                              <Badge variant="destructive" className="mr-2">RC</Badge>
-                              Restricted Currencies
+                      {/* Grand Total row with haircut and interest calculations */}
+                      <TableRow className="bg-gray-100 font-bold">
+                        <TableCell className="border">Grand Total (All Currencies)</TableCell>
+                        <TableCell colSpan={Object.keys(summary.currencyTotals).length} className="border">
+                          <div className="text-right space-y-1">
+                            <div>
+                              {formatCurrency(
+                                summary.poolingSimulation.links
+                                  .filter(link => link.target === "RTC")
+                                  .reduce((sum, link) => sum + link.value, 0) * (1 - fxHaircut / 100)
+                              )}
+                              {fxHaircut > 0 && (
+                                <span className="text-sm text-gray-500 ml-2">
+                                  (After {fxHaircut}% FX haircut)
+                                </span>
+                              )}
                             </div>
-                          </TableCell>
-                          {Array.from(new Set([
-                            ...Object.keys(
+                            <div className="text-sm text-green-600">
+                              Credit Interest: {formatCurrency(
                               summary.poolingSimulation.links
-                                .reduce((acc, link) => {
-                                  acc[link.currency] = true;
-                                  return acc;
-                                }, {} as Record<string, boolean>)
-                            )
-                          ].sort())).map(currencyCode => {
-                            // Find amount for this restricted currency
-                            const amount = summary.poolingSimulation.links
-                              .filter(link => link.target === "Restricted" && link.currency === currencyCode)
-                              .reduce((sum, link) => sum + link.value, 0);
-                            
-                            return (
-                              <TableCell key={`rc-${currencyCode}`} className="border text-right bg-red-50">
-                                {formatCurrency(amount)}
-                              </TableCell>
-                            );
-                          })}
-                        </TableRow>
-                        
-                        {/* Total row */}
-                        <TableRow className="bg-gray-50 font-bold">
-                          <TableCell className="border">Total</TableCell>
-                          {Array.from(new Set([
-                            ...Object.keys(
-                              summary.poolingSimulation.links
-                                .reduce((acc, link) => {
-                                  acc[link.currency] = true;
-                                  return acc;
-                                }, {} as Record<string, boolean>)
-                            )
-                          ].sort())).map(currencyCode => {
-                            // Calculate total for this currency
-                            const total = summary.poolingSimulation.links
-                              .filter(link => link.currency === currencyCode)
-                              .reduce((sum, link) => sum + link.value, 0);
-                            
-                            return (
-                              <TableCell key={`total-${currencyCode}`} className="border text-right">
-                                {formatCurrency(total)}
-                              </TableCell>
-                            );
-                          })}
-                        </TableRow>
-                      </TableBody>
-                    </Table>
+                                  .filter(link => link.target === "RTC")
+                                  .reduce((sum, link) => sum + link.value, 0) * (1 - fxHaircut / 100) * (blendedCreditRate / 100)
+                              )}/yr @ {blendedCreditRate}%
+                            </div>
+                            <div className="text-sm text-red-600">
+                              Debit Interest: {formatCurrency(
+                                summary.poolingSimulation.links
+                                  .filter(link => link.target === "RTC")
+                                  .reduce((sum, link) => sum + link.value, 0) * (1 - fxHaircut / 100) * (usdDebitRate / 100)
+                              )}/yr @ {usdDebitRate}%
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Client Savings Section */}
+                <div className="mt-8">
+                  <h3 className="text-lg font-medium mb-4">Client Savings</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Interest Expense</CardTitle>
+                        <CardDescription>Pre-Pooling</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-red-600">
+                          {formatCurrency(
+                            summary.clients.reduce((total, client) => 
+                              total + client.countries.reduce((countryTotal, country) =>
+                                countryTotal + country.currencies.reduce((currencyTotal, currency) => {
+                                  const currencyInfo = summary.currencyTotals[currency.currencyCode];
+                                  return currencyTotal + (currency.totalBorrowing * (currencyInfo?.borrowingInterestRate || 0) / 100);
+                                }, 0)
+                              , 0)
+                            , 0)
+                          )}/yr
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Interest Expense</CardTitle>
+                        <CardDescription>Post-Pooling</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {(() => {
+                          // Calculate all poolable cash (FC + PC)
+                          const poolableLinks = summary.poolingSimulation.links
+                            .filter(link => link.target === "RTC");
+
+                          // Step 1: Calculate Pooled Cash (after FX haircut)
+                          const totalPooledCash = poolableLinks
+                            .reduce((sum, link) => sum + link.value, 0) * (1 - fxHaircut / 100);
+
+                          // Step 2: Calculate Total Borrowing (excluding restricted)
+                          const totalBorrowing = summary.clients.reduce((total, client) => 
+                            total + client.countries.reduce((countryTotal, country) => {
+                              const countryInfo = currencyConvertibility[country.country as keyof typeof currencyConvertibility];
+                              if (countryInfo?.category === "Restricted Currencies") {
+                                return countryTotal;
+                              }
+                              return countryTotal + country.currencies.reduce((currencyTotal, currency) => 
+                                currencyTotal + currency.totalBorrowing
+                              , 0);
+                            }, 0)
+                          , 0);
+
+                          // Step 3: Calculate Net Position
+                          const netPosition = totalPooledCash - totalBorrowing;
+
+                          // Step 4: Calculate Interest Expenses
+                          const cashPoolBorrowingCost = totalPooledCash * (usdDebitRate / 100);
+                          const additionalBorrowingCost = netPosition < 0 ? Math.abs(netPosition) * (usdDebitRate / 100) : 0;
+                          const totalExpense = cashPoolBorrowingCost + additionalBorrowingCost;
+
+                          return (
+                            <div className="text-2xl font-bold text-red-600">
+                              {formatCurrency(totalExpense)}/yr
+                            </div>
+                          );
+                        })()}
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Net Savings</CardTitle>
+                        <CardDescription>Annual Interest Savings</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {(() => {
+                          // Calculate current (pre-pooling) expense
+                          const currentExpense = summary.clients.reduce((total, client) => 
+                            total + client.countries.reduce((countryTotal, country) =>
+                              countryTotal + country.currencies.reduce((currencyTotal, currency) => {
+                                const currencyInfo = summary.currencyTotals[currency.currencyCode];
+                                return currencyTotal + (currency.totalBorrowing * (currencyInfo?.borrowingInterestRate || 0) / 100);
+                              }, 0)
+                            , 0)
+                          , 0);
+
+                          // Calculate post-pooling expense
+                          const poolableLinks = summary.poolingSimulation.links
+                            .filter(link => link.target === "RTC");
+                          const totalPooledCash = poolableLinks
+                            .reduce((sum, link) => sum + link.value, 0) * (1 - fxHaircut / 100);
+                          const totalBorrowing = summary.clients.reduce((total, client) => 
+                            total + client.countries.reduce((countryTotal, country) => {
+                              const countryInfo = currencyConvertibility[country.country as keyof typeof currencyConvertibility];
+                              if (countryInfo?.category === "Restricted Currencies") {
+                                return countryTotal;
+                              }
+                              return countryTotal + country.currencies.reduce((currencyTotal, currency) => 
+                                currencyTotal + currency.totalBorrowing
+                              , 0);
+                            }, 0)
+                          , 0);
+                          const netPosition = totalPooledCash - totalBorrowing;
+                          const cashPoolBorrowingCost = totalPooledCash * (usdDebitRate / 100);
+                          const additionalBorrowingCost = netPosition < 0 ? Math.abs(netPosition) * (usdDebitRate / 100) : 0;
+                          const postPoolingExpense = cashPoolBorrowingCost + additionalBorrowingCost;
+
+                          // Calculate savings
+                          const netSavings = currentExpense - postPoolingExpense;
+                          const savingsPercentage = currentExpense > 0 ? (netSavings / currentExpense * 100) : 0;
+
+                          return (
+                            <>
+                              <div className={`text-2xl font-bold ${netSavings >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {formatCurrency(Math.abs(netSavings))}/yr
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {netSavings >= 0 ? 'Savings' : 'Additional Cost'} of {Math.abs(savingsPercentage).toFixed(1)}%
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </CardContent>
+                    </Card>
                   </div>
                 </div>
-              </TabsContent>
-            </Tabs>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
