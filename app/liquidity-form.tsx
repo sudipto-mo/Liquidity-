@@ -1768,7 +1768,7 @@ export default function LiquidityForm() {
 
               {/* RTC View content */}
               <div className="mt-8">
-                  <h3 className="text-lg font-medium mb-4">Cash Pool Analysis</h3>
+                  <h3 className="text-lg font-medium mb-4">Cash Pool Structure</h3>
                 <div className="flex items-center gap-8 mb-4">
                   <div className="flex flex-col gap-2 min-w-[220px]">
                     <Label htmlFor="fxHaircut">FX Haircut (%)</Label>
