@@ -1598,17 +1598,20 @@ export default function LiquidityForm() {
       {/* Summary Section */}
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>Liquidity Summary</CardTitle>
-          <CardDescription>
-            Comprehensive overview of liquidity positions across all clients and currencies.
-          </CardDescription>
+          {/* Removed CardDescription as requested */}
         </CardHeader>
         <CardContent>
-          {summary.clients.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              No data available. Please add client information and submit the form.
-            </div>
-          ) : (
+          <Tabs defaultValue="summary" className="w-full">
+            <TabsList className="mb-6">
+              <TabsTrigger value="summary">Client Balance Summary</TabsTrigger>
+              <TabsTrigger value="pooling">Cash Pooling Analysis</TabsTrigger>
+            </TabsList>
+            <TabsContent value="summary">
+              {summary.clients.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No data available. Please add client information and submit the form.
+                </div>
+              ) : (
                 <div>
                   <div className="flex items-center gap-4 mb-4">
                     <Input 
@@ -1765,10 +1768,13 @@ export default function LiquidityForm() {
                       })()}
                     </TableBody>
                   </Table>
-
-              {/* RTC View content */}
+                </div>
+              )}
+            </TabsContent>
+            <TabsContent value="pooling">
+              {/* Cash Pool Structure and Client Savings sections moved here */}
               <div className="mt-8">
-                  <h3 className="text-lg font-medium mb-4">Cash Pool Structure</h3>
+                <h3 className="text-lg font-medium mb-4">Cash Pool Structure</h3>
                 <div className="flex items-center gap-8 mb-4">
                   <div className="flex flex-col gap-2 min-w-[220px]">
                     <Label htmlFor="fxHaircut">FX Haircut (%)</Label>
@@ -1816,110 +1822,109 @@ export default function LiquidityForm() {
                     </div>
                   </div>
                 </div>
-                  <div className="overflow-x-auto">
-                    <Table className="border-collapse">
-                      <TableHeader>
-                        <TableRow className="bg-secondary">
-                          <TableHead className="border">Category</TableHead>
-                        {Array.from(new Set(
-                          Object.keys(
-                              summary.poolingSimulation.links
-                                .filter(link => link.target === "RTC") // Only include poolable currencies
-                                .reduce((acc, link) => {
-                                  acc[link.currency] = true;
-                                  return acc;
-                                }, {} as Record<string, boolean>)
-                            )
-                        )).sort().map((currencyCode: string) => (
-                          <TableHead key={currencyCode} className="border text-center">{currencyCode}</TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {/* Freely Convertible Currencies row */}
-                        <TableRow>
-                          <TableCell className="border font-medium">
-                            <div className="flex items-center">
-                              <Badge variant="outline" className="mr-2 bg-green-50">FC</Badge>
-                              Freely Convertible
-                            </div>
-                          </TableCell>
-                        {Array.from(new Set(
-                          Object.keys(
-                              summary.poolingSimulation.links
-                                .filter(link => link.target === "RTC") // Only include poolable currencies
-                                .reduce((acc, link) => {
-                                  acc[link.currency] = true;
-                                  return acc;
-                                }, {} as Record<string, boolean>)
-                            )
-                        )).sort().map((currencyCode: string) => {
-                            const amount = summary.poolingSimulation.links
-                              .filter(link => link.target === "RTC" && !link.convertedValue && link.currency === currencyCode)
-                              .reduce((sum, link) => sum + link.value, 0);
-                            
-                            return (
-                              <TableCell key={`fc-${currencyCode}`} className={`border text-right ${amount > 0 ? 'bg-green-50' : ''}`}>
-                                {amount > 0 ? formatCurrency(amount) : '-'}
-                              </TableCell>
-                            );
-                          })}
-                        </TableRow>
-                        
-                        {/* Partially Convertible Currencies row */}
-                        <TableRow>
-                          <TableCell className="border font-medium">
-                            <div className="flex items-center">
-                              <Badge variant="outline" className="mr-2 bg-yellow-50">PC</Badge>
-                              Partially Convertible
-                            </div>
-                          </TableCell>
-                        {Array.from(new Set(
-                          Object.keys(
-                              summary.poolingSimulation.links
-                                .filter(link => link.target === "RTC") // Only include poolable currencies
-                                .reduce((acc, link) => {
-                                  acc[link.currency] = true;
-                                  return acc;
-                                }, {} as Record<string, boolean>)
-                            )
-                        )).sort().map((currencyCode: string) => {
-                            const amount = summary.poolingSimulation.links
-                              .filter(link => link.target === "RTC" && link.convertedValue && link.currency === currencyCode)
-                              .reduce((sum, link) => sum + link.value, 0);
-                            
-                            return (
-                              <TableCell key={`pc-${currencyCode}`} className={`border text-right ${amount > 0 ? 'bg-yellow-50' : ''}`}>
-                                {amount > 0 ? formatCurrency(amount) : '-'}
-                              </TableCell>
-                            );
-                          })}
-                        </TableRow>
-
-                      {/* Grand Total row with haircut and interest calculations */}
-                      <TableRow className="bg-gray-100 font-bold">
-                        <TableCell className="border">Grand Total (Poolable Currencies)</TableCell>
-                        <TableCell colSpan={Object.keys(summary.currencyTotals).length} className="border">
-                          <div className="text-right space-y-1">
-                            <div>
-                              {formatCurrency(
-                                summary.poolingSimulation.links
-                                  .filter(link => link.target === "RTC")
-                                  .reduce((sum, link) => sum + link.value, 0) * (1 - fxHaircut / 100)
-                              )}
-                              {fxHaircut > 0 && (
-                                <span className="text-sm text-gray-500 ml-2">
-                                  (After {fxHaircut}% FX haircut)
-                                </span>
-                              )}
-                            </div>
+                <div className="overflow-x-auto">
+                  <Table className="border-collapse">
+                    <TableHeader>
+                      <TableRow className="bg-secondary">
+                        <TableHead className="border">Category</TableHead>
+                      {Array.from(new Set(
+                        Object.keys(
+                            summary.poolingSimulation.links
+                              .filter(link => link.target === "RTC") // Only include poolable currencies
+                              .reduce((acc, link) => {
+                                acc[link.currency] = true;
+                                return acc;
+                              }, {} as Record<string, boolean>)
+                          )
+                      )).sort().map((currencyCode: string) => (
+                        <TableHead key={currencyCode} className="border text-center">{currencyCode}</TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {/* Freely Convertible Currencies row */}
+                      <TableRow>
+                        <TableCell className="border font-medium">
+                          <div className="flex items-center">
+                            <Badge variant="outline" className="mr-2 bg-green-50">FC</Badge>
+                            Freely Convertible
                           </div>
                         </TableCell>
+                      {Array.from(new Set(
+                        Object.keys(
+                            summary.poolingSimulation.links
+                              .filter(link => link.target === "RTC") // Only include poolable currencies
+                              .reduce((acc, link) => {
+                                acc[link.currency] = true;
+                                return acc;
+                              }, {} as Record<string, boolean>)
+                          )
+                      )).sort().map((currencyCode: string) => {
+                          const amount = summary.poolingSimulation.links
+                            .filter(link => link.target === "RTC" && !link.convertedValue && link.currency === currencyCode)
+                            .reduce((sum, link) => sum + link.value, 0);
+                          
+                          return (
+                            <TableCell key={`fc-${currencyCode}`} className={`border text-right ${amount > 0 ? 'bg-green-50' : ''}`}>
+                              {amount > 0 ? formatCurrency(amount) : '-'}
+                            </TableCell>
+                          );
+                        })}
                       </TableRow>
-                    </TableBody>
-                  </Table>
-                </div>
+                      
+                      {/* Partially Convertible Currencies row */}
+                      <TableRow>
+                        <TableCell className="border font-medium">
+                          <div className="flex items-center">
+                            <Badge variant="outline" className="mr-2 bg-yellow-50">PC</Badge>
+                            Partially Convertible
+                          </div>
+                        </TableCell>
+                      {Array.from(new Set(
+                        Object.keys(
+                            summary.poolingSimulation.links
+                              .filter(link => link.target === "RTC") // Only include poolable currencies
+                              .reduce((acc, link) => {
+                                acc[link.currency] = true;
+                                return acc;
+                              }, {} as Record<string, boolean>)
+                          )
+                      )).sort().map((currencyCode: string) => {
+                          const amount = summary.poolingSimulation.links
+                            .filter(link => link.target === "RTC" && link.convertedValue && link.currency === currencyCode)
+                            .reduce((sum, link) => sum + link.value, 0);
+                          
+                          return (
+                            <TableCell key={`pc-${currencyCode}`} className={`border text-right ${amount > 0 ? 'bg-yellow-50' : ''}`}>
+                              {amount > 0 ? formatCurrency(amount) : '-'}
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
 
+                    {/* Grand Total row with haircut and interest calculations */}
+                    <TableRow className="bg-gray-100 font-bold">
+                      <TableCell className="border">Grand Total (Poolable Currencies)</TableCell>
+                      <TableCell colSpan={Object.keys(summary.currencyTotals).length} className="border">
+                        <div className="text-right space-y-1">
+                          <div>
+                            {formatCurrency(
+                              summary.poolingSimulation.links
+                                .filter(link => link.target === "RTC")
+                                .reduce((sum, link) => sum + link.value, 0) * (1 - fxHaircut / 100)
+                            )}
+                            {fxHaircut > 0 && (
+                              <span className="text-sm text-gray-500 ml-2">
+                                (After {fxHaircut}% FX haircut)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+                </div>
                 {/* Client Savings Section */}
                 <div className="mt-8">
                   <h3 className="text-lg font-medium mb-4">Client Savings</h3>
@@ -2048,8 +2053,8 @@ export default function LiquidityForm() {
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>
