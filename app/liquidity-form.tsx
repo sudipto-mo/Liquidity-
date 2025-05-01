@@ -1811,6 +1811,7 @@ export default function LiquidityForm() {
                         {Array.from(new Set(
                           Object.keys(
                               summary.poolingSimulation.links
+                                .filter(link => link.target === "RTC") // Only include poolable currencies
                                 .reduce((acc, link) => {
                                   acc[link.currency] = true;
                                   return acc;
@@ -1833,6 +1834,7 @@ export default function LiquidityForm() {
                         {Array.from(new Set(
                           Object.keys(
                               summary.poolingSimulation.links
+                                .filter(link => link.target === "RTC") // Only include poolable currencies
                                 .reduce((acc, link) => {
                                   acc[link.currency] = true;
                                   return acc;
@@ -1862,6 +1864,7 @@ export default function LiquidityForm() {
                         {Array.from(new Set(
                           Object.keys(
                               summary.poolingSimulation.links
+                                .filter(link => link.target === "RTC") // Only include poolable currencies
                                 .reduce((acc, link) => {
                                   acc[link.currency] = true;
                                   return acc;
@@ -1882,7 +1885,7 @@ export default function LiquidityForm() {
 
                       {/* Grand Total row with haircut and interest calculations */}
                       <TableRow className="bg-gray-100 font-bold">
-                        <TableCell className="border">Grand Total (All Currencies)</TableCell>
+                        <TableCell className="border">Grand Total (Poolable Currencies)</TableCell>
                         <TableCell colSpan={Object.keys(summary.currencyTotals).length} className="border">
                           <div className="text-right space-y-1">
                             <div>
