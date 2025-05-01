@@ -401,10 +401,16 @@ const defaultCommonCurrencies = ["USD", "EUR", "GBP", "JPY"]
 
 // Format number as currency
 const formatCurrency = (amount: number) => {
+  if (amount < 0) {
+    return `(${new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Math.abs(amount))})`;
+  }
   return new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount)
+  }).format(amount);
 }
 
 // Export the FormValues type for use in storage.ts
