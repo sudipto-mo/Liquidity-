@@ -1913,20 +1913,6 @@ export default function LiquidityForm() {
                                 </span>
                               )}
                             </div>
-                            <div className="text-sm text-green-600">
-                              Credit Interest: {formatCurrency(
-                              summary.poolingSimulation.links
-                                  .filter(link => link.target === "RTC")
-                                  .reduce((sum, link) => sum + link.value, 0) * (1 - fxHaircut / 100) * (blendedCreditRate / 100)
-                              )}/yr @ {blendedCreditRate}%
-                            </div>
-                            <div className="text-sm text-red-600">
-                              Debit Interest: {formatCurrency(
-                                summary.poolingSimulation.links
-                                  .filter(link => link.target === "RTC")
-                                  .reduce((sum, link) => sum + link.value, 0) * (1 - fxHaircut / 100) * (usdDebitRate / 100)
-                              )}/yr @ {usdDebitRate}%
-                            </div>
                           </div>
                         </TableCell>
                       </TableRow>
