@@ -4,6 +4,7 @@ import { useForm, useFieldArray } from "react-hook-form"
 import * as z from "zod"
 import { useState, useEffect } from "react"
 import { Plus, Trash2, X, Search } from "lucide-react"
+import dynamic from "next/dynamic"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -415,6 +416,8 @@ const formatCurrency = (amount: number) => {
 
 // Export the FormValues type for use in storage.ts
 export type FormValues = z.infer<typeof formSchema>
+
+const ClientBalanceExcel = dynamic(() => import("../components/ClientBalanceExcel"), { ssr: false });
 
 export default function LiquidityForm() {
   const [selectedCurrencies, setSelectedCurrencies] = useState<{ [key: number]: string[] }>({})
@@ -1135,65 +1138,6 @@ export default function LiquidityForm() {
     currency: "_all"
   });
 
-  // Excel Export/Import Handlers (dynamic import)
-  const exportToExcel = async () => {
-    if (typeof window === "undefined") return;
-    const XLSX = await import("xlsx");
-    // Flatten entries for Excel
-    const rows = form.getValues().entries.flatMap(entry =>
-      entry.currencies.map(currency => ({
-        clientName: entry.clientName,
-        operatingCountry: entry.operatingCountry,
-        currencyCode: currency.currencyCode,
-        cashAmount: currency.cashAmount,
-        cashInterestRate: currency.cashInterestRate,
-        borrowingAmount: currency.borrowingAmount,
-        borrowingInterestRate: currency.borrowingInterestRate,
-        borrowingTenor: currency.borrowingTenor,
-      }))
-    );
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "ClientBalance");
-    XLSX.writeFile(wb, "ClientBalanceEntry.xlsx");
-  };
-
-  const handleExcelUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (typeof window === "undefined") return;
-    const XLSX = await import("xlsx");
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const data = new Uint8Array(e.target?.result as ArrayBuffer);
-      const workbook = XLSX.read(data, { type: "array" });
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(worksheet) as any[];
-      // Group by clientName + operatingCountry
-      const grouped: Record<string, any> = {};
-      json.forEach(row => {
-        const key = `${row.clientName}||${row.operatingCountry}`;
-        if (!grouped[key]) {
-          grouped[key] = {
-            clientName: row.clientName,
-            operatingCountry: row.operatingCountry,
-            currencies: []
-          };
-        }
-        grouped[key].currencies.push({
-          currencyCode: row.currencyCode,
-          cashAmount: row.cashAmount,
-          cashInterestRate: row.cashInterestRate,
-          borrowingAmount: row.borrowingAmount,
-          borrowingInterestRate: row.borrowingInterestRate,
-          borrowingTenor: row.borrowingTenor,
-        });
-      });
-      form.reset({ entries: Object.values(grouped) });
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
   return (
     <div className="container mx-auto py-10">
       <Card className="w-full mb-8">
@@ -1251,8 +1195,7 @@ export default function LiquidityForm() {
             </div>
           </div>
           <div className="flex gap-2 mt-4">
-            <Button variant="secondary" onClick={exportToExcel}>Export to Excel</Button>
-            <Input type="file" accept=".xlsx, .xls" onChange={e => handleExcelUpload(e)} className="w-auto" />
+            <ClientBalanceExcel form={form} />
           </div>
         </CardHeader>
         <CardContent>
