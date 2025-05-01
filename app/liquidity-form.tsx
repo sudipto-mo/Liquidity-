@@ -31,7 +31,6 @@ import { Slider } from "@/components/ui/slider"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { initialData } from "@/data/initial-data"
 import { getClientStore, saveToClientStore, deleteFromClientStore, type SavedClient } from "@/lib/client-store"
-import * as XLSX from "xlsx";
 
 // Define the schema for a currency entry
 const currencyEntrySchema = z.object({
