@@ -1155,7 +1155,7 @@ export default function LiquidityForm() {
         <CardContent>
           <Tabs defaultValue="entry" className="w-full">
             <TabsList className="mb-6">
-              <TabsTrigger value="entry">Client Balance Entry</TabsTrigger>
+              <TabsTrigger value="entry">Client Balance Input</TabsTrigger>
               <TabsTrigger value="summary">Client Balance Summary</TabsTrigger>
               <TabsTrigger value="pooling">Cash Pooling Analysis</TabsTrigger>
             </TabsList>
