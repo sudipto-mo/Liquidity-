@@ -3,8 +3,9 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, useFieldArray } from "react-hook-form"
 import * as z from "zod"
 import { useState, useEffect } from "react"
-import { Plus, Trash2, X, Search } from "lucide-react"
+import { Plus, Trash2, X, Search, Save, FolderOpen, RefreshCw, FileText } from "lucide-react"
 import dynamic from "next/dynamic"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -1140,415 +1141,382 @@ export default function LiquidityForm() {
 
   return (
     <div className="container mx-auto py-10">
-      <Card className="w-full mb-8">
-        <CardHeader>
-          <CardTitle>Regional Treasury Centre (RTC) Configuration</CardTitle>
-          <CardDescription>Configure your RTC location for liquidity management.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <Label>RTC Location</Label>
-            <Select
-              value={rtcConfig.location}
-              onValueChange={(value) => setRTCConfig({ location: value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select RTC location" />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(currencyConvertibility)
-                  .filter(([_, info]) => info.category === "Freely Convertible Currencies")
-                  .map(([country]) => (
-                    <SelectItem key={country} value={country}>
-                      {country}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            <p className="text-sm text-muted-foreground">
-              Your RTC must be in a country with freely convertible currency
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Removing the RTC Configuration Card */}
 
       <Card className="w-full mb-8">
         <CardHeader>
           <div className="flex justify-between items-center">
             <div>
-              <CardTitle>Client Balance Entry</CardTitle>
-              <CardDescription>Enter your client liquidity information below.</CardDescription>
+              <CardTitle>Liquidity Management Dashboard</CardTitle>
+              <CardDescription>Analyze and optimize your cash positions across entities and currencies.</CardDescription>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleReset}>
-                Reset Form
-              </Button>
-              <Button variant="outline" onClick={handleLoadSample}>
-                Load Sample Data
-              </Button>
-              <Button variant="outline" onClick={() => setSaveDialogOpen(true)}>
-                Save Configuration
-              </Button>
-              <Button variant="outline" onClick={() => setLoadDialogOpen(true)}>
-                Load Configuration
-              </Button>
-            </div>
-          </div>
-          <div className="flex gap-2 mt-4">
-            <ClientBalanceExcel form={form} />
           </div>
         </CardHeader>
         <CardContent>
-          <Accordion type="single" collapsible value={formCollapsed ? undefined : "form-section"}>
-            <AccordionItem value="form-section">
-              <AccordionTrigger
-                onClick={() => setFormCollapsed((prev) => !prev)}
-                className="text-lg font-medium mb-2"
-              >
-                {formCollapsed ? "Show Client Balance Entry" : "Hide Client Balance Entry"}
-              </AccordionTrigger>
-              <AccordionContent>
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit((data) => { onSubmit(data); setFormCollapsed(true); })}>
-                    <CardContent className="space-y-6">
-                      {fields.map((field, clientIndex) => (
-                        <div key={field.id} className="rounded-lg border p-4">
-                          <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-medium">Client #{clientIndex + 1}</h3>
-                            {fields.length > 1 && (
-                              <Button type="button" variant="outline" size="icon" onClick={() => remove(clientIndex)}>
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                          <div className="grid gap-6 md:grid-cols-2 mb-4">
-                            <FormField
-                              control={form.control}
-                              name={`entries.${clientIndex}.clientName`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Client Name</FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="Enter client name" {...field} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`entries.${clientIndex}.operatingCountry`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Operating Country</FormLabel>
-                                  <Select
-                                    onValueChange={(value) => handleCountryChange(value, clientIndex)}
-                                    value={field.value}
-                                  >
-                                    <FormControl>
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Select country" />
-                                      </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                      {Object.entries(regionCountries).map(([region, countries]) => (
-                                        <SelectGroup key={region}>
-                                          <SelectLabel>{region}</SelectLabel>
-                                          {countries.map((country) => {
-                                            const convertibility = currencyConvertibility[country as keyof typeof currencyConvertibility];
-                                            return (
-                                              <SelectItem key={country} value={country}>
-                                                <div className="flex items-center justify-between w-full">
-                                                  <span>{country}</span>
-                                                  {convertibility && (
-                                                    <Badge
-                                                      variant={
-                                                        convertibility.category === "Restricted Currencies"
-                                                          ? "destructive"
-                                                          : convertibility.category === "Partially Convertible"
-                                                          ? "secondary"
-                                                          : "default"
-                                                      }
-                                                      className="ml-2 text-xs"
-                                                    >
-                                                      {convertibility.category}
-                                                    </Badge>
-                                                  )}
-                                                </div>
-                                              </SelectItem>
-                                            );
-                                          })}
-                                        </SelectGroup>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                  <FormMessage />
-                                  {field.value && currencyConvertibility[field.value as keyof typeof currencyConvertibility]?.notes && (
-                                    <p className="text-sm text-muted-foreground mt-1">
-                                      Note: {currencyConvertibility[field.value as keyof typeof currencyConvertibility].notes}
-                                    </p>
-                                  )}
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-
-                          {/* Currency Selection Dialog */}
-                          {currencySelectionOpen[clientIndex] && (
-                            <div className="mb-6 p-4 border rounded-lg bg-gray-50">
-                              <h4 className="font-medium mb-2">
-                                Which currencies are applicable for {watchedEntries[clientIndex]?.clientName || "this client"}{" "}
-                                in {watchedEntries[clientIndex]?.operatingCountry}?
-                              </h4>
-                              <p className="text-sm text-gray-500 mb-4">Select all applicable currencies</p>
-
-                              <Tabs defaultValue="suggested" className="w-full">
-                                <TabsList className="grid w-full grid-cols-2">
-                                  <TabsTrigger value="suggested">Suggested Currencies</TabsTrigger>
-                                  <TabsTrigger value="all">All Currencies</TabsTrigger>
-                                </TabsList>
-                                <TabsContent value="suggested" className="mt-4">
-                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
-                                    {(
-                                      commonCurrenciesByCountry[
-                                        watchedEntries[clientIndex]?.operatingCountry as keyof typeof commonCurrenciesByCountry
-                                      ] || defaultCommonCurrencies
-                                    ).map((currencyCode) => {
-                                      const currency = currencies.find((c) => c.code === currencyCode)
-                                      return (
-                                        <div key={currencyCode} className="flex items-center space-x-2">
-                                          <Checkbox
-                                            id={`suggested-${clientIndex}-${currencyCode}`}
-                                            checked={(selectedCurrencies[clientIndex] || []).includes(currencyCode)}
-                                            onCheckedChange={() => toggleCurrency(currencyCode, clientIndex)}
-                                          />
-                                          <label
-                                            htmlFor={`suggested-${clientIndex}-${currencyCode}`}
-                                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                          >
-                                            {currencyCode} - {currency?.name}
-                                          </label>
-                                        </div>
-                                      )
-                                    })}
-                                  </div>
-                                </TabsContent>
-                                <TabsContent value="all" className="mt-4">
-                                  <div className="mb-4 relative">
-                                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                    <Input
-                                      placeholder="Search currencies..."
-                                      className="pl-8"
-                                      value={currencySearchTerm}
-                                      onChange={(e) => setCurrencySearchTerm(e.target.value)}
-                                    />
-                                  </div>
-                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mb-4 max-h-60 overflow-y-auto">
-                                    {filteredCurrencies.map((currency) => (
-                                      <div key={currency.code} className="flex items-center space-x-2">
-                                        <Checkbox
-                                          id={`all-${clientIndex}-${currency.code}`}
-                                          checked={(selectedCurrencies[clientIndex] || []).includes(currency.code)}
-                                          onCheckedChange={() => toggleCurrency(currency.code, clientIndex)}
-                                        />
-                                        <label
-                                          htmlFor={`all-${clientIndex}-${currency.code}`}
-                                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                        >
-                                          {currency.code} - {currency.name}
-                                        </label>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </TabsContent>
-                              </Tabs>
-
-                              <div className="mt-4">
-                                <h5 className="text-sm font-medium mb-2">Selected Currencies:</h5>
-                                <div className="flex flex-wrap gap-2 mb-4">
-                                  {(selectedCurrencies[clientIndex] || []).map((code) => {
-                                    const currency = currencies.find((c) => c.code === code)
-                                    return (
-                                      <Badge key={code} variant="secondary" className="px-2 py-1">
-                                        {code} - {currency?.name}
-                                      </Badge>
-                                    )
-                                  })}
-                                  {(selectedCurrencies[clientIndex] || []).length === 0 && (
-                                    <span className="text-sm text-gray-500">No currencies selected</span>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="flex justify-end">
-                                <Button type="button" onClick={() => handleCurrencySelection(clientIndex)}>
-                                  Confirm Currencies
-                                </Button>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Currency Entries */}
-                          {!currencySelectionOpen[clientIndex] && watchedEntries[clientIndex]?.currencies?.length > 0 && (
-                            <div className="space-y-4">
-                              <div className="flex justify-between items-center">
-                                <h4 className="font-medium">Currency Balances</h4>
-                                <Button type="button" variant="outline" size="sm" onClick={() => addCurrency(clientIndex)}>
-                                  <Plus className="h-4 w-4 mr-1" /> Add Currency
-                                </Button>
-                              </div>
-
-                              {watchedEntries[clientIndex]?.currencies?.map((currency, currencyIndex) => {
-                                const currencyInfo = currencies.find((c) => c.code === currency.currencyCode)
-                                return (
-                                  <div key={currencyIndex} className="p-3 border rounded-lg">
-                                    <div className="flex justify-between items-center mb-3">
-                                      <Badge variant="outline" className="px-3 py-1">
-                                        {currency.currencyCode} - {currencyInfo?.name}
-                                      </Badge>
-                                      {watchedEntries[clientIndex]?.currencies?.length > 1 && (
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => removeCurrency(clientIndex, currencyIndex)}
-                                        >
-                                          <X className="h-4 w-4" />
-                                        </Button>
-                                      )}
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                      {/* Cash Section */}
-                                      <div className="space-y-4 p-4 border rounded-lg">
-                                        <h5 className="font-medium">Cash Position</h5>
-                                        <FormField
-                                          control={form.control}
-                                          name={`entries.${clientIndex}.currencies.${currencyIndex}.cashAmount`}
-                                          render={({ field }) => (
-                                            <FormItem>
-                                              <FormLabel>Amount ({currency.currencyCode})</FormLabel>
-                                              <FormControl>
-                                                <Input type="number" placeholder="0.00" {...field} />
-                                              </FormControl>
-                                              <FormMessage />
-                                            </FormItem>
-                                          )}
-                                        />
-                                        <FormField
-                                          control={form.control}
-                                          name={`entries.${clientIndex}.currencies.${currencyIndex}.cashInterestRate`}
-                                          render={({ field }) => (
-                                            <FormItem>
-                                              <FormLabel>Interest Rate (%)</FormLabel>
-                                              <FormControl>
-                                                <Input type="number" placeholder="0.00" step="0.01" {...field} />
-                                              </FormControl>
-                                              <FormMessage />
-                                            </FormItem>
-                                          )}
-                                        />
-                                      </div>
-
-                                      {/* Borrowing Section */}
-                                      <div className="space-y-4 p-4 border rounded-lg">
-                                        <h5 className="font-medium">Borrowing Position</h5>
-                                        <FormField
-                                          control={form.control}
-                                          name={`entries.${clientIndex}.currencies.${currencyIndex}.borrowingAmount`}
-                                          render={({ field }) => (
-                                            <FormItem>
-                                              <FormLabel>Amount ({currency.currencyCode})</FormLabel>
-                                              <FormControl>
-                                                <Input type="number" placeholder="0.00" {...field} />
-                                              </FormControl>
-                                              <FormMessage />
-                                            </FormItem>
-                                          )}
-                                        />
-                                        <FormField
-                                          control={form.control}
-                                          name={`entries.${clientIndex}.currencies.${currencyIndex}.borrowingInterestRate`}
-                                          render={({ field }) => (
-                                            <FormItem>
-                                              <FormLabel>Interest Rate (%)</FormLabel>
-                                              <FormControl>
-                                                <Input type="number" placeholder="0.00" step="0.01" {...field} />
-                                              </FormControl>
-                                              <FormMessage />
-                                            </FormItem>
-                                          )}
-                                        />
-                                        <FormField
-                                          control={form.control}
-                                          name={`entries.${clientIndex}.currencies.${currencyIndex}.borrowingTenor`}
-                                          render={({ field }) => (
-                                            <FormItem>
-                                              <FormLabel>Tenor</FormLabel>
-                                              <Select onValueChange={field.onChange} value={field.value}>
-                                                <FormControl>
-                                                  <SelectTrigger>
-                                                    <SelectValue placeholder="Select tenor" />
-                                                  </SelectTrigger>
-                                                </FormControl>
-                                                <SelectContent>
-                                                  <SelectItem value="Short Term">Short Term</SelectItem>
-                                                  <SelectItem value="Long Term">Long Term</SelectItem>
-                                                </SelectContent>
-                                              </Select>
-                                              <FormMessage />
-                                            </FormItem>
-                                          )}
-                                        />
-                                      </div>
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="mt-2"
-                        onClick={() =>
-                          append({
-                            clientName: "",
-                            operatingCountry: "",
-                            currencies: [],
-                          })
-                        }
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Another Client
-                      </Button>
-                    </CardContent>
-                    <CardFooter>
-                      <Button type="submit" className="w-full">
-                        Submit Liquidity Data
-                      </Button>
-                    </CardFooter>
-                  </form>
-                </Form>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </CardContent>
-      </Card>
-
-      {/* Summary Section */}
-      <Card className="w-full">
-        <CardHeader>
-          {/* Removed CardDescription as requested */}
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="summary" className="w-full">
+          <Tabs defaultValue="entry" className="w-full">
             <TabsList className="mb-6">
+              <TabsTrigger value="entry">Client Balance Entry</TabsTrigger>
               <TabsTrigger value="summary">Client Balance Summary</TabsTrigger>
               <TabsTrigger value="pooling">Cash Pooling Analysis</TabsTrigger>
             </TabsList>
+            
+            {/* Entry Tab Content */}
+            <TabsContent value="entry">
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    
+                    
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={handleReset}>
+                      Reset Form
+                    </Button>
+                    <Button variant="outline" onClick={handleLoadSample}>
+                      Load Sample Data
+                    </Button>
+                    <Button variant="outline" onClick={() => setSaveDialogOpen(true)}>
+                      Save Configuration
+                    </Button>
+                    <Button variant="outline" onClick={() => setLoadDialogOpen(true)}>
+                      Load Configuration
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex gap-2 mb-6">
+                  <div className="flex gap-2">
+                    <Button variant="secondary">Export to Excel</Button>
+                    <ClientBalanceExcel form={form} />
+                  </div>
+                </div>
+              </div>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)}>
+                  <div className="space-y-6">
+                    {fields.map((field, clientIndex) => (
+                      <div key={field.id} className="rounded-lg border p-4">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-lg font-medium">Client #{clientIndex + 1}</h3>
+                          {fields.length > 1 && (
+                            <Button type="button" variant="outline" size="icon" onClick={() => remove(clientIndex)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                        <div className="grid gap-6 md:grid-cols-2 mb-4">
+                          <FormField
+                            control={form.control}
+                            name={`entries.${clientIndex}.clientName`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Client Name</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="Enter client name" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`entries.${clientIndex}.operatingCountry`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Operating Country</FormLabel>
+                                <Select
+                                  onValueChange={(value) => handleCountryChange(value, clientIndex)}
+                                  value={field.value}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select country" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {Object.entries(regionCountries).map(([region, countries]) => (
+                                      <SelectGroup key={region}>
+                                        <SelectLabel>{region}</SelectLabel>
+                                        {countries.map((country) => {
+                                          const convertibility = currencyConvertibility[country as keyof typeof currencyConvertibility];
+                                          return (
+                                            <SelectItem key={country} value={country}>
+                                              <div className="flex items-center justify-between w-full">
+                                                <span>{country}</span>
+                                                {convertibility && (
+                                                  <Badge
+                                                    variant={
+                                                      convertibility.category === "Restricted Currencies"
+                                                        ? "destructive"
+                                                        : convertibility.category === "Partially Convertible"
+                                                        ? "secondary"
+                                                        : "default"
+                                                    }
+                                                    className="ml-2 text-xs"
+                                                  >
+                                                    {convertibility.category}
+                                                  </Badge>
+                                                )}
+                                              </div>
+                                            </SelectItem>
+                                          );
+                                        })}
+                                      </SelectGroup>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                                {field.value && currencyConvertibility[field.value as keyof typeof currencyConvertibility]?.notes && (
+                                  <p className="text-sm text-muted-foreground mt-1">
+                                    Note: {currencyConvertibility[field.value as keyof typeof currencyConvertibility].notes}
+                                  </p>
+                                )}
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        {/* Currency Selection Dialog */}
+                        {currencySelectionOpen[clientIndex] && (
+                          <div className="mb-6 p-4 border rounded-lg bg-gray-50">
+                            <h4 className="font-medium mb-2">
+                              Which currencies are applicable for {watchedEntries[clientIndex]?.clientName || "this client"}{" "}
+                              in {watchedEntries[clientIndex]?.operatingCountry}?
+                            </h4>
+                            <p className="text-sm text-gray-500 mb-4">Select all applicable currencies</p>
+
+                            <Tabs defaultValue="suggested" className="w-full">
+                              <TabsList className="grid w-full grid-cols-2">
+                                <TabsTrigger value="suggested">Suggested Currencies</TabsTrigger>
+                                <TabsTrigger value="all">All Currencies</TabsTrigger>
+                              </TabsList>
+                              <TabsContent value="suggested" className="mt-4">
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
+                                  {(
+                                    commonCurrenciesByCountry[
+                                      watchedEntries[clientIndex]?.operatingCountry as keyof typeof commonCurrenciesByCountry
+                                    ] || defaultCommonCurrencies
+                                  ).map((currencyCode) => {
+                                    const currency = currencies.find((c) => c.code === currencyCode)
+                                    return (
+                                      <div key={currencyCode} className="flex items-center space-x-2">
+                                        <Checkbox
+                                          id={`suggested-${clientIndex}-${currencyCode}`}
+                                          checked={(selectedCurrencies[clientIndex] || []).includes(currencyCode)}
+                                          onCheckedChange={() => toggleCurrency(currencyCode, clientIndex)}
+                                        />
+                                        <label
+                                          htmlFor={`suggested-${clientIndex}-${currencyCode}`}
+                                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                        >
+                                          {currencyCode} - {currency?.name}
+                                        </label>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </TabsContent>
+                              <TabsContent value="all" className="mt-4">
+                                <div className="mb-4 relative">
+                                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                  <Input
+                                    placeholder="Search currencies..."
+                                    className="pl-8"
+                                    value={currencySearchTerm}
+                                    onChange={(e) => setCurrencySearchTerm(e.target.value)}
+                                  />
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mb-4 max-h-60 overflow-y-auto">
+                                  {filteredCurrencies.map((currency) => (
+                                    <div key={currency.code} className="flex items-center space-x-2">
+                                      <Checkbox
+                                        id={`all-${clientIndex}-${currency.code}`}
+                                        checked={(selectedCurrencies[clientIndex] || []).includes(currency.code)}
+                                        onCheckedChange={() => toggleCurrency(currency.code, clientIndex)}
+                                      />
+                                      <label
+                                        htmlFor={`all-${clientIndex}-${currency.code}`}
+                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                      >
+                                        {currency.code} - {currency.name}
+                                      </label>
+                                    </div>
+                                  ))}
+                                </div>
+                              </TabsContent>
+                            </Tabs>
+
+                            <div className="mt-4">
+                              <h5 className="text-sm font-medium mb-2">Selected Currencies:</h5>
+                              <div className="flex flex-wrap gap-2 mb-4">
+                                {(selectedCurrencies[clientIndex] || []).map((code) => {
+                                  const currency = currencies.find((c) => c.code === code)
+                                  return (
+                                    <Badge key={code} variant="secondary" className="px-2 py-1">
+                                      {code} - {currency?.name}
+                                    </Badge>
+                                  )
+                                })}
+                                {(selectedCurrencies[clientIndex] || []).length === 0 && (
+                                  <span className="text-sm text-gray-500">No currencies selected</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex justify-end">
+                              <Button type="button" onClick={() => handleCurrencySelection(clientIndex)}>
+                                Confirm Currencies
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Currency Entries */}
+                        {!currencySelectionOpen[clientIndex] && watchedEntries[clientIndex]?.currencies?.length > 0 && (
+                          <div className="space-y-4">
+                            <div className="flex justify-between items-center">
+                              <h4 className="font-medium">Currency Balances</h4>
+                              <Button type="button" variant="outline" size="sm" onClick={() => addCurrency(clientIndex)}>
+                                <Plus className="h-4 w-4 mr-1" /> Add Currency
+                              </Button>
+                            </div>
+
+                            {watchedEntries[clientIndex]?.currencies?.map((currency, currencyIndex) => {
+                              const currencyInfo = currencies.find((c) => c.code === currency.currencyCode)
+                              return (
+                                <div key={currencyIndex} className="p-3 border rounded-lg">
+                                  <div className="flex justify-between items-center mb-3">
+                                    <Badge variant="outline" className="px-3 py-1">
+                                      {currency.currencyCode} - {currencyInfo?.name}
+                                    </Badge>
+                                    {watchedEntries[clientIndex]?.currencies?.length > 1 && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => removeCurrency(clientIndex, currencyIndex)}
+                                      >
+                                        <X className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Cash Section */}
+                                    <div className="space-y-4 p-4 border rounded-lg">
+                                      <h5 className="font-medium">Cash Position</h5>
+                                      <FormField
+                                        control={form.control}
+                                        name={`entries.${clientIndex}.currencies.${currencyIndex}.cashAmount`}
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>Amount ({currency.currencyCode})</FormLabel>
+                                            <FormControl>
+                                              <Input type="number" placeholder="0.00" {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name={`entries.${clientIndex}.currencies.${currencyIndex}.cashInterestRate`}
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>Interest Rate (%)</FormLabel>
+                                            <FormControl>
+                                              <Input type="number" placeholder="0.00" step="0.01" {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                    </div>
+
+                                    {/* Borrowing Section */}
+                                    <div className="space-y-4 p-4 border rounded-lg">
+                                      <h5 className="font-medium">Borrowing Position</h5>
+                                      <FormField
+                                        control={form.control}
+                                        name={`entries.${clientIndex}.currencies.${currencyIndex}.borrowingAmount`}
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>Amount ({currency.currencyCode})</FormLabel>
+                                            <FormControl>
+                                              <Input type="number" placeholder="0.00" {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name={`entries.${clientIndex}.currencies.${currencyIndex}.borrowingInterestRate`}
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>Interest Rate (%)</FormLabel>
+                                            <FormControl>
+                                              <Input type="number" placeholder="0.00" step="0.01" {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name={`entries.${clientIndex}.currencies.${currencyIndex}.borrowingTenor`}
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>Tenor</FormLabel>
+                                            <Select onValueChange={field.onChange} value={field.value}>
+                                              <FormControl>
+                                                <SelectTrigger>
+                                                  <SelectValue placeholder="Select tenor" />
+                                                </SelectTrigger>
+                                              </FormControl>
+                                              <SelectContent>
+                                                <SelectItem value="Short Term">Short Term</SelectItem>
+                                                <SelectItem value="Long Term">Long Term</SelectItem>
+                                              </SelectContent>
+                                            </Select>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={() =>
+                        append({
+                          clientName: "",
+                          operatingCountry: "",
+                          currencies: [],
+                        })
+                      }
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Another Client
+                    </Button>
+                  </div>
+                  <div className="mt-6">
+                    <Button type="submit" className="w-full">
+                      Submit Liquidity Data
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </TabsContent>
+            
+            {/* Summary Tab Content */}
             <TabsContent value="summary">
               {summary.clients.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
